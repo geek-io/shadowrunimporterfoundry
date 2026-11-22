@@ -179,7 +179,7 @@ export function vehicleTypeFromText(text) {
     if (/groundcraft|\bcars?\b|\bbikes?\b|motorcycle|truck|\bvans?\b|sedan|\bsuv\b|limo/.test(s)) return 'ground';
     if (/walker|anthro|legged|spider|crawler/.test(s)) return 'walker';
     if (/boat|ship|yacht|submarine|\bsub\b|watercraft|hydrofoil|jet ?ski|catamaran|\braft\b|kayak|vessel/.test(s)) return 'water';
-    if (/rotor|vtol|vstol|helicopter|plane|aircraft|jet|blimp|airship|\blta\b|glider|wing|aerial|copter|dragonfly|hornet|condor|kite|balloon/.test(s)) return 'air';
+    if (/roto|rotor|vtol|vstol|helicopter|plane|aircraft|jet|blimp|airship|\blta\b|glider|wing|aerial|copter|dragonfly|hornet|condor|kite|balloon/.test(s)) return 'air';
     return 'ground';
 }
 
@@ -226,7 +226,10 @@ export function wareGrade(text) {
  * @returns {{type: string, documentName: string, sub?: string, hint?: object}|null}
  */
 export function sectionHeading(line) {
-    const s = String(line ?? '').trim().replace(/[:.]+$/, '').toLowerCase();
+    const raw = String(line ?? '').trim();
+    // Headings start with a capital and don't end a sentence ("bikes." in a paragraph is not BIKES).
+    if (/^[a-z]/.test(raw) || /[.!?,;]$/.test(raw)) return null;
+    const s = raw.replace(/:+$/, '').toLowerCase();
     if (!s || s.length > 40 || /\d/.test(s)) return null;
     const spell = /^(combat|detection|health|illusion|manipulation) spells?$/.exec(s);
     if (spell) return { documentName: 'Item', type: 'spell', hint: { category: spell[1] } };

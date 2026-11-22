@@ -27,12 +27,13 @@ export function buildItem({ type, name, fields = {}, hint = {}, owned = false })
 
     // Description: a labeled stat line for what was parsed, then any description prose. The pasted source text is never copied in.
     const description = {};
-    // Weapons and hosts show every parsed stat in their own sheet fields, so they get no stat line.
-    const statLine = type === 'weapon' || type === 'host' ? '' : describeFields(name, f, type);
+    // Weapons, hosts and contact cards show their stats in their own sheet fields, so they get no stat line.
+    const sectioned = Array.isArray(f.sections);
+    const statLine = type === 'weapon' || sectioned ? '' : describeFields(name, f, type);
     const parts = [];
     if (statLine) parts.push(`<p>${escapeHTML(statLine)}</p>`);
-    // Hosts: Installed IC, Slaved Devices, Sculpting, Security Procedures, Pay Data... as printed.
-    if (type === 'host' && Array.isArray(f.sections)) {
+    // Hosts (Installed IC, Sculpting, Security Procedures...) and contact cards (skills, Uses): as printed.
+    if (sectioned) {
         for (const sec of f.sections) {
             if (!has(sec.text) || /^(host\s+)?rating$/i.test(sec.label ?? '')) continue;
             parts.push(sec.label ? `<p><strong>${escapeHTML(sec.label)}:</strong> ${escapeHTML(sec.text)}</p>` : textToHTML(sec.text));

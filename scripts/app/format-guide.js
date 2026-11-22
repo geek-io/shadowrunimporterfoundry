@@ -7,7 +7,7 @@ export const FORMAT_GUIDE = [
         id: 'npc', label: 'NPC or grunt (stat block)', types: ['character'],
         notes: [
             'First line: the name (a name printed over two capitalised lines is joined). "Name: short description" also works.',
-            'A line such as (4, PROFESSIONAL RATING 3) or (2, FORCE 5) gives the group size and rating.',
+            'A line such as (4, PROFESSIONAL RATING 3) or (2, FORCE 5) gives the group size and rating; (1, FORCE 7, BOUND, 3 SERVICES) marks a bound spirit.',
             'Lines between the name and the attribute table become the biography.',
             'Attribute header B A R S W L I C ESS (add EDG, M or RES as needed), then the values. 4(5) means 4 base, 5 augmented.',
             'Then one section per line, each starting with its label (with or without a colon): Initiative, Condition Monitor, Limits, Armor, Skills, Knowledge Skills, Languages, Qualities, Augmentations, Gear, Weapons, Spells, Adept Powers, Complex Forms, Programs, Contacts, Tradition, Initiate Grade.',
@@ -51,6 +51,7 @@ Weaknesses Allergy (Sunlight, Mild)`,
         id: 'spirit', label: 'Spirit', types: ['spirit'],
         notes: [
             'Put the Force in the name: "(Force 5)". The spirit type comes from the name (Spirit of Fire, Earth Spirit...).',
+            'Insect spirits as printed in adventures work too: HYBRID FORM over (FORCE 5 SOLDIER ANT SPIRITS, 3) becomes "Soldier Ant Spirit (Hybrid Form)", Force 5, a group of 3, with the printed attributes.',
             'Attributes are relative to Force: F, F+2, F-1. Skills without ratings use the Force.',
         ],
         example: `Spirit of Fire (Force 5)
@@ -210,7 +211,10 @@ The critter is surrounded by crackling energy.`,
     },
     {
         id: 'contact', label: 'Contacts', types: ['contact'],
-        notes: ['Name: ..., Type: Contact (or the archetype), Connection: N, Loyalty: N. On NPCs: Contacts Fixer (Connection 4, Loyalty 2).'],
+        notes: [
+            'Name: ..., Type: Contact (or the archetype), Connection: N, Loyalty: N. On NPCs: Contacts Fixer (Connection 4, Loyalty 2).',
+            'Handout contact cards: NAME in capitals, the role and metatype under it, then Connection Rating:, Loyalty:, Key Active Skills:, Knowledge Skills:, Uses:. The paragraph above the name is the description. Repeated copies of the same card import once.',
+        ],
         example: `Name: Sample Fixer
 Type: Contact
 Connection: 4

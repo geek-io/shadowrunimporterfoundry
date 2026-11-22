@@ -8,6 +8,23 @@ A Foundry VTT v13 and v14 module for the [Shadowrun 5th Edition system](https://
 
 <a href="https://patreon.com/geekioshow"><img src="assets/Patreon-Logo.png" alt="All my work is always free, but a little bit of help is always appreciated" width="240"></a>
 
+# v 0.1.7
+
+Tested end to end on a full Shadowrun Missions adventure PDF: every NPC, spirit, vehicle, host and contact now comes through.
+
+- **PDF pages read in the right order throughout.** Columns are found even when a paragraph runs across both of them, sidebars that share the text's line spacing are still left out, and a running footer such as "SCENE 3: THE DIRECT ROUTE" no longer swallows the last line of a column.
+- **One stray word no longer breaks the rest of the book.** A line of story text such as "bikes." was read as a BIKES heading and turned every later NPC into a vehicle; headings now have to look like headings.
+- **Insect spirits:** `HYBRID FORM` with `(FORCE 5 SOLDIER ANT SPIRITS, 3)` becomes a spirit actor named "Soldier Ant Spirit (Hybrid Form)", with Force 5, the soldier spirit type, a group of 3 and the printed attributes. Flesh, true and hybrid forms of ant, wasp and roach spirits all work.
+- **Bound spirits:** `(1, FORCE 7, BOUND, 3 SERVICES)` sets the spirit as bound with 3 services.
+- **Contact cards** from player handouts (name, role, Connection Rating, Key Active Skills, Knowledge Skills, Uses) import as contacts with the card's description. The three copies printed on a handout page import once.
+- Identical entries printed twice in a book are imported once.
+- Adventure section headings (Cast of Shadows, Behind the Scenes, Debugging, Scene 6 (Optional)...) are never taken for an NPC's name and always end the stat block before them.
+- Initiative written as `9(10) + 3D6` uses the augmented value.
+- "Unique Qualities:", "Bound Spirits:" and vehicle "Upgrades:" lines go into the notes instead of onto the end of a list. Vehicles keep their programs and weapons, and rotor drones are aircraft.
+- Skill fixes: a skill group named without the word "group" (`Conjuring 4`) applies to its skills, `Law Enforcement 3 (Professional Knowledge)` in an active skills list becomes a knowledge skill, and "Assessing" is read as Assensing. Ratings written before a detail (`Critical Strike 1 (Unarmed)`) are read.
+- Ammunition entries such as KEV Ammunition import as ammo.
+- Story text, credits and GM notes are left out without the "table line(s) could not be read" warning; that warning now only appears for table rows that really could not be read.
+
 # v 0.1.6
 
 - **Matrix hosts import.** A host written as `Host: Name` (or `HOST: NAME`), the `Rating Attack Sleaze Data Proc. Firewall` table and labeled lines (Installed IC, Slaved Devices, Sculpting, Security Procedures, Pay Data) becomes a host item. Rating and the four matrix attributes go on the sheet as printed, and the labeled lines go into the description. Hosts printed among an adventure's NPCs are picked out, and the NPCs around them are still imported. Hosts have their own page in the formatting guide.

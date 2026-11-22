@@ -66,6 +66,7 @@ export const SKILL_ALIASES = {
     'heavy weapon': 'heavy_weapons',
     'throwing': 'throwing_weapons',
     'thrown weapons': 'throwing_weapons',
+    'assessing': 'assensing',
     'thrown weapon': 'throwing_weapons',
     'throwing weapon': 'throwing_weapons',
     'ritual spellcasting': 'ritual_spellcasting',

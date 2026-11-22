@@ -81,7 +81,25 @@ function readAttributePairs(text) {
     return attributes;
 }
 
-const GROUP_LINE = /^\(\s*(?:(\d+)\s*[,;]\s*)?(professional\s+rating|pr|force|level|rating)\s*:?\s*(\d+)\s*\)$/i;
+/** The line under an adventure NPC's name, or null. */
+export function parseGroupLine(line) {
+    const m = /^\((.+)\)$/.exec(String(line ?? '').trim());
+    if (!m) return null;
+    const out = {};
+    for (const part of m[1].split(/\s*[,;]\s*/)) {
+        let x;
+        if (/^\d+$/.test(part)) out.groupSize = Number(part);
+        else if ((x = /^(?:professional\s+rating|pr|rating)\s*:?\s*(\d+)$/i.exec(part))) out.professionalRating = Number(x[1]);
+        else if ((x = /^level\s*:?\s*(\d+)$/i.exec(part))) out.level = Number(x[1]);
+        else if ((x = /^force\s*:?\s*(\d+)(?:\s+(.+))?$/i.exec(part))) {
+            out.force = Number(x[1]);
+            if (x[2]) out.spiritKind = x[2].trim();
+        } else if (/^bound$/i.test(part)) out.bound = true;
+        else if ((x = /^(\d+)\s+services?$/i.exec(part))) out.services = Number(x[1]);
+        else return null;
+    }
+    return Object.keys(out).length ? out : null;
+}
 
 /** An all-caps name line: "DOCWAGON", "RESPONSE TEAM". */
 function isCapsTitle(t) {
@@ -128,7 +146,9 @@ const SECTIONS = [
     ['essence', /^essence\b(?=\s*:?\s*\d)/i],
     ['movement', /^movement\b/i],
     ['matrix', /^(?:matrix\s+attributes|device\s+rating)\b/i],
-    ['notes', /^(?:notes|special|description|tactics|background)\b\s*:/i],
+    ['notes', /^(?:notes|special|description|tactics|background|unique\s+qualities|special\s+rules?)\b\s*:/i],
+    ['bound_spirits', /^bound\s+spirits?\b\s*:/i],
+    ['upgrades', /^(?:upgrades|modifications|mods)\b\s*:/i],
     ['lifestyle', /^lifestyle\b/i],
     ['nuyen', /^nuyen\b/i],
     ['karma', /^karma\b(?=\s*:?\s*\d)/i],
@@ -139,7 +159,7 @@ export function sectionOf(line) {
     const s = line.replace(/^[•\-*\s]+/, '');
     for (const [key, re] of SECTIONS) {
         const m = re.exec(s);
-        if (m) return { key, rest: s.slice(m[0].length).replace(/^\s*[:\-–]?\s*/, ''), colon: /^\s*:/.test(s.slice(m[0].length)) };
+        if (m) return { key, rest: s.slice(m[0].length).replace(/^\s*[:\-–]?\s*/, ''), colon: /:\s*$/.test(m[0]) || /^\s*:/.test(s.slice(m[0].length)) };
     }
     return null;
 }
@@ -236,7 +256,8 @@ function firstParenGroup(s) {
 
 /** "Wired Reflexes 2", "cybereyes (Rating 3) [smartlink, flare comp]", "Improved Reflexes (2)" */
 function parseNamedEntry(entry) {
-    let s = entry.trim().replace(/\.$/, '');
+    // "…, Sapience, and Venom": the last item of a list keeps its "and".
+    let s = entry.trim().replace(/\.$/, '').replace(/^(?:and|&)\s+/i, '');
     const out = { name: s, rating: undefined, bracket: '', paren: '' };
     const bracket = /\[([^\]]*)\]/.exec(s);
     if (bracket) { out.bracket = bracket[1].trim(); s = (s.slice(0, bracket.index) + s.slice(bracket.index + bracket[0].length)).trim(); }
@@ -251,6 +272,9 @@ function parseNamedEntry(entry) {
             || /^x?\s*\d+\s*(?:doses?|rounds?|clips?|uses?|units?|meters?|m)?$/i.test(inner);
         if (removable) s = (s.slice(0, paren.index) + s.slice(paren.index + paren[0].length)).trim();
     }
+    // "Critical Strike 1 (Unarmed)": the rating before a parenthesised detail.
+    const before = out.rating === undefined && paren ? /\s+(\d+)\s*(\(.*\))$/.exec(s) : null;
+    if (before) { out.rating = Number(before[1]); s = `${s.slice(0, before.index)} ${before[2]}`.trim(); }
     const trailing = /\s+(\d+(?:\.\d+)?)$/.exec(s);
     if (trailing && out.rating === undefined) { out.rating = Number(trailing[1]); s = s.slice(0, trailing.index).trim(); }
     out.name = s.replace(/\s+/g, ' ').trim();
@@ -334,15 +358,11 @@ export function parseStatBlock(text, opts = {}) {
         }
         for (let i = i0; i < stop; i++) {
             const t = lines[i].trim();
-            // "(4, PROFESSIONAL RATING 3)", "(2, FORCE 5)": how many appear, and their rating.
-            const group = GROUP_LINE.exec(t);
+            // "(4, PROFESSIONAL RATING 3)", "(2, FORCE 5)", "(FORCE 5 SOLDIER ANT SPIRITS, 3)",
+            // "(1, FORCE 7, BOUND, 3 SERVICES)", "(10)": how many appear, their rating and kind.
+            const group = parseGroupLine(t);
             if (group) {
-                if (group[1]) f.groupSize = Number(group[1]);
-                const kind = group[2].toLowerCase();
-                const n = Number(group[3]);
-                if (/force/.test(kind)) f.force = n;
-                else if (/level/.test(kind)) f.level = n;
-                else f.professionalRating = n;
+                Object.assign(f, group);
                 consumed.add(i);
                 continue;
             }
@@ -371,6 +391,12 @@ export function parseStatBlock(text, opts = {}) {
     if (meta) f.metatype = METATYPES[meta[1].toLowerCase()];
     title = title.replace(/\(\s*(professional\s+rating|pr|force|level|rating)\s*:?\s*\d+\s*\)/ig, '').replace(/\s*[-:–]\s*$/, '').trim();
     record.name = tidyName(title);
+    // "HYBRID FORM" with "(FORCE 5 SOLDIER ANT SPIRITS, 3)": "Soldier Ant Spirit (Hybrid Form)".
+    if (f.spiritKind) {
+        const kind = tidyName(f.spiritKind).replace(/\bspirits\b/i, 'Spirit');
+        if (/^(true|flesh|hybrid|insect|astral)\s+form$/i.test(record.name)) record.name = `${kind} (${record.name})`;
+        f.spiritType ??= spiritTypeFromName(f.spiritKind);
+    }
 
     if (headerIndex >= 0) {
         let vi = headerIndex + 1;
@@ -403,6 +429,8 @@ export function parseStatBlock(text, opts = {}) {
         let sec = sectionOf(t);
         if (sec && colonStyle && !sec.colon && current && LIST_SECTIONS.has(current.key)
             && !/[.!?]$/.test(current.lines[current.lines.length - 1] ?? '')) sec = null;
+        // A wrapped sentence that happens to start with a section word ("skill (p. 394, SR5) and ...").
+        if (sec && current && !sec.colon && /^[a-z]/.test(t)) sec = null;
         if (sec) {
             current = { key: sec.key, lines: [sec.rest] };
             sections.push(current);
@@ -457,6 +485,8 @@ function detectActorType(record) {
     if (/\bsprite\b/.test(name) || (relative && (f.attributes.attack || f.attributes.sleaze || f.level !== undefined))) return 'sprite';
     if (/\bic\b|intrusion countermeasure/.test(name) && !f.attributes.body) return 'ic';
     if (/\bspirit\b|elemental|guardian spirit|watcher/.test(name) || (relative && f.force !== undefined) || (relative && !f.attributes.attack)) return 'spirit';
+    // Insect spirits and other Force-rated beings printed with plain numbers: "(1, FORCE 5)", "(FORCE 6 SCOUT ROACH SPIRIT)".
+    if (f.force !== undefined && f.professionalRating === undefined && (f.spiritKind || f.attributes.magic)) return 'spirit';
     return 'character';
 }
 
@@ -473,7 +503,7 @@ function finalizeByType(record) {
     delete f._weaknesses; delete f._powers;
 
     if (record.type === 'spirit') {
-        f.spiritType = spiritTypeFromName(record.name);
+        f.spiritType = (f.spiritKind && spiritTypeFromName(f.spiritKind)) || spiritTypeFromName(record.name);
         if (!f.spiritType) record.warnings.push('Spirit type not recognised from the name; set it on the sheet.');
         if (f.force === undefined) {
             record.warnings.push('Force not found (e.g. "Force 4" in the title). Defaulting to Force 6.');
@@ -503,8 +533,9 @@ function finalizeByType(record) {
 
 export function parseInitiative(text) {
     const s = String(text ?? '').replace(/\s+/g, '');
-    const m = /(\d+)\+(\d+)D6/i.exec(s);
-    if (m) return { base: Number(m[1]), dice: Number(m[2]) };
+    // "10 + 3D6", or "9(10) + 3D6" (base and augmented; the printed total is the augmented one).
+    const m = /(\d+)(?:\((\d+)\))?\+(\d+)D6/i.exec(s);
+    if (m) return { base: Number(m[2] ?? m[1]), dice: Number(m[3]) };
     const rel = /\(?[FL](?:[x×*](\d+))?\)?([+-]\d+)?\+(\d+)D6/i.exec(s);
     if (rel) return { multiplier: Number(rel[1] ?? 1), constant: Number(rel[2] ?? 0), dice: Number(rel[3]) };
     const dice = /(\d+)D6/i.exec(s);
@@ -591,8 +622,10 @@ function handleSection(record, key, lines, warnings) {
                 // Inline knowledge / language markers inside the skills line.
                 const s = parseSkillEntry(entry, { defaultRating });
                 if (!s) continue;
-                if (s.group) {
-                    const groupKey = s.name.toLowerCase().replace(/\s+/g, '_');
+                // "Firearms group 4", or a group name that is not also a skill ("Conjuring 4").
+                const groupName = s.name.toLowerCase().replace(/\s+/g, '_');
+                if (s.group || (SKILL_GROUPS[groupName] && !skillKey(s.name))) {
+                    const groupKey = groupName;
                     if (SKILL_GROUPS[groupKey]) {
                         for (const sk of SKILL_GROUPS[groupKey]) {
                             const name = sk.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
@@ -600,6 +633,13 @@ function handleSection(record, key, lines, warnings) {
                         }
                         continue;
                     }
+                }
+                // "Law Enforcement 3 (Professional Knowledge)" listed with the active skills.
+                const kn = s.specs.find(x => /^(street|academic|professional|interests?)?\s*knowledge$/i.test(x.trim()));
+                if (kn && !skillKey(s.name)) {
+                    const kind = /^(street|academic|professional|interests?)/i.exec(kn.trim())?.[1]?.toLowerCase().replace(/^interest$/, 'interests') ?? 'street';
+                    record.skills.push({ name: s.name, rating: s.rating ?? 0, specs: s.specs.filter(x => x !== kn), category: 'knowledge', knowledgeType: kind });
+                    continue;
                 }
                 const key = skillKey(s.name);
                 if (!key) warnings.push(`Skill "${s.name}" is not a standard active skill; imported as a custom skill.`);
@@ -773,6 +813,12 @@ function handleSection(record, key, lines, warnings) {
             break;
         }
         case 'notes': f.notes = [f.notes, text].filter(Boolean).join('\n\n'); break;
+        case 'bound_spirits':
+            f.notes = [f.notes, `Bound spirits: ${text}`].filter(Boolean).join('\n\n');
+            break;
+        case 'upgrades':
+            if (text && !/^(none|-|—)$/i.test(text.trim())) f.notes = [f.notes, `Upgrades: ${text}`].filter(Boolean).join('\n\n');
+            break;
         case 'lifestyle':
             record.children.push({ ...item('lifestyle', text.replace(/\(.*\)/, '').trim() || 'Lifestyle'), lookup: false });
             break;

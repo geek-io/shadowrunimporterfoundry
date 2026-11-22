@@ -8,6 +8,7 @@ import { resolveType, sectionHeading, isBioware } from './types.js';
 import { parseStatBlock, isAttributeHeader, isVehicleHeader, sectionOf } from './statblock.js';
 import { parseTable, parseTableHeader, parseLooseRow } from './tables.js';
 import { findHostBlocks, parseHostBlock } from './host.js';
+import { findContactCards } from './contact-card.js';
 
 const SEPARATOR = /^\s*(?:-{3,}|={3,}|\*{3,}|_{3,}|#{3,}|—{2,})\s*$/;
 const DESCRIPTOR_WORDS = /^(direct|indirect|elemental|active|passive|directional|area|psychic|realistic|obvious|single[- ]sense|multi[- ]sense|mental|physical|environmental|damaging|essence|extended|sense|anchored|material link|minion|spell|spotter|mana|blood|contractual)$/i;
@@ -36,7 +37,18 @@ export function parseText(text, opts = {}) {
         if (opts.forceType) applyForcedType(r, opts.forceType);
         r.source = opts.sourceLabel ?? 'text';
     }
-    return { records, skipped };
+    return { records: dedupe(records), skipped };
+}
+
+/** Identical entries printed more than once (handout cards, a vehicle repeated in two scenes) import once. */
+function dedupe(records) {
+    const seen = new Set();
+    return records.filter(r => {
+        const key = JSON.stringify([r.documentName, r.type, r.name, r.fields, r.children ?? null, r.skills ?? null]);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function splitChunks(text) {
@@ -63,14 +75,19 @@ function applyForcedType(record, forceType) {
 /* ------------------------------------------------------------------ */
 
 function parseChunk(lines, context, opts, records, skipped) {
-    // 0. Matrix hosts ("HOST: NAME" and its Rating/Attack/Sleaze/Data Proc./Firewall table) are items
-    //    printed among an adventure's NPCs; cut them out first, then read what is around them.
-    const hosts = findHostBlocks(lines, { isStart: l => isAttributeHeader(l) || isVehicleHeader(l) || !!parseTableHeader(l) });
-    if (hosts.length) {
+    // 0. Matrix hosts ("HOST: NAME" and its Rating/Attack/Sleaze/Data Proc./Firewall table) and contact
+    //    cards ("NAME" / role / "Connection Rating: 2") are items printed among an adventure's NPCs;
+    //    cut them out first, then read what is around them.
+    const special = [
+        ...findHostBlocks(lines, { isStart: l => isAttributeHeader(l) || isVehicleHeader(l) || !!parseTableHeader(l) })
+            .map(b => ({ ...b, make: () => parseHostBlock(lines.slice(b.start, b.end)) })),
+        ...findContactCards(lines).map(c => ({ ...c, make: () => c.record })),
+    ].sort((a, b) => a.start - b.start).filter((b, i, all) => i === 0 || b.start >= all[i - 1].end);
+    if (special.length) {
         let pos = 0;
-        for (const b of hosts) {
+        for (const b of special) {
             if (b.start > pos) parseChunk(lines.slice(pos, b.start), context, opts, records, skipped);
-            records.push(parseHostBlock(lines.slice(b.start, b.end)));
+            records.push(b.make());
             pos = b.end;
         }
         if (pos < lines.length && lines.slice(pos).some(l => l.trim())) parseChunk(lines.slice(pos), context, opts, records, skipped);
@@ -102,6 +119,9 @@ function parseChunk(lines, context, opts, records, skipped) {
     parseItemRegion(lines, context, opts, records, skipped);
 }
 
+/** Standard section headings in adventures (Shadowrun Missions and others): never an NPC's name. */
+const ADVENTURE_HEADING = /^(?:cast of shadows|behind the scenes|pushing the envelope|debugging|scan this|tell it to them straight|legwork|picking up the pieces|player handouts|introduction|mission synopsis|debriefing log|gamemaster reward|reputation|contacts|money|karma|hooks?|plot synopsis|setup|adventure background|scene \d+\b.*|scene:.*|grunts and moving targets|npcs?)$/i;
+
 const isCaps = t => /[A-Z]{2}/.test(t) && !/[a-z]/.test(t);
 
 /** A line that can be an NPC name: short, no sentence punctuation, not a stat or label line. */
@@ -110,6 +130,7 @@ function isActorTitle(line) {
     if (!t || t.length > 70 || /^[a-z(]/.test(t) || /[.,;:!?]$/.test(t)) return false;
     // Weapon or gear stats ("Natural weapons (unarmed, Acc 12, DV 7P, AP -1)") are not names.
     if (/\b(?:acc|dv|ap|reach|rc)\s*[-–—+(]?\s*\d/i.test(t)) return false;
+    if (ADVENTURE_HEADING.test(t)) return false;
     if (/[[\]|]/.test(t) || ACTOR_HINT_LINE.test(t) || sectionOf(t) || isAttributeHeader(t) || isVehicleHeader(t)) return false;
     if (parseLabeledLine(t) && !/^name\s*:/i.test(t)) return false;
     return t.replace(/\(.*?\)/g, '').trim().split(/\s+/).length <= 7 && /[A-Za-z]/.test(t);
@@ -178,6 +199,8 @@ function actorBlockEnd(lines, start, end) {
             let p = j - 1;
             while (p >= start && !lines[p].trim()) p--;
             const prev = p >= start ? lines[p].trim() : '';
+            // An adventure heading ("Scene 6 (Optional): Hoofing It", "Debugging") always ends the block.
+            if (ADVENTURE_HEADING.test(next) || /^scene\s+\d+\b/i.test(next)) return j;
             const continues = sectionOf(next) || /^[a-z(]/.test(next) || /[,;\-(\[]$/.test(prev)
                 || (/[[(]/.test(next) && /\d|\]|\)/.test(next) && !/[.!?]$/.test(next))
                 || /,\s*\S/.test(next) && /\d/.test(next) && !/[.!?]$/.test(next) && next.length < 120;
@@ -406,6 +429,7 @@ export function decideItemType(fields, context, opts, rawText = '') {
     if (has('armor') && !has('damage') && !has('handling')) return { documentName: 'Item', type: 'armor' };
     if (has('activation') && /power/.test(context.section?.type ?? 'adept_power')) return { documentName: 'Item', type: context.section?.type ?? 'adept_power' };
     if (context.section) return { documentName: context.section.documentName, type: context.section.type };
+    if (/\b(?:ammunition|ammo)\b/i.test(rawText.split('\n')[0] ?? '')) return { documentName: 'Item', type: 'ammo' };
     const fallbackType = resolveType(opts.defaultType ?? 'equipment') ?? { documentName: 'Item', type: 'equipment' };
     return { ...fallbackType, guessed: true };
 }
@@ -445,8 +469,8 @@ function fallback(lines, context, opts, records, skipped = []) {
         }
     }
     if (!labeledCount && !listType) {
-        // Unstructured text (page headers, prose) is reported, not imported.
-        skipped.push(...content.slice(0, 3).map(l => l.slice(0, 80)));
+        // Unstructured text (story text, credits, page headers) is not imported. It is expected in
+        // adventures and rulebooks, so it is not reported either; only unreadable table rows are.
         return;
     }
     if (!labeledCount && shortList && listType) {

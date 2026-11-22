@@ -91,9 +91,9 @@ function pageToText(items, pageWidth, columns, pageHeight) {
     if (columns === '1') return linesToText(groupLines(runs));
     if (columns === '2') {
         const mid = splitPoint(runs, pageWidth);
-        return layoutText(runs, [{ start: mid - 1, end: mid + 1 }]);
+        return layoutText(runs, [{ start: mid - 1, end: mid + 1 }], pageHeight);
     }
-    return layoutText(runs, findGutters(runs, pageWidth));
+    return layoutText(runs, findGutters(runs, pageWidth), pageHeight);
 }
 
 /**
@@ -136,9 +136,12 @@ function findGutters(runs, pageWidth) {
     const hs = text.map(r => r.h).sort((a, b) => a - b);
     const hMed = hs[Math.floor(hs.length / 2)] || 10;
 
-    // How much text height covers each x position.
+    // How much text height covers each x position. Lines running across the whole text area (a
+    // paragraph or title over both columns) are left out here; they are read as full-width lines.
     const occ = new Float64Array(Math.ceil(width) + 1);
+    const wide = (maxX - minX) * 0.55;
     for (const r of text) {
+        if (r.w > wide) continue;
         const a = Math.max(0, Math.floor(r.x)), b = Math.min(occ.length - 1, Math.ceil(r.x + r.w));
         for (let x = a; x < b; x++) occ[x] += r.h;
     }
@@ -185,8 +188,10 @@ function findGutters(runs, pageWidth) {
         }
     }
     // Table columns that line up row by row with their neighbours are not text columns.
+    // (Navigation tabs at the page edge may share the text's baselines; they stay separate.)
     gutters = gutters.filter((g, i) => {
         const l = groupLines(stripRuns(gutters, i)), r = groupLines(stripRuns(gutters, i + 1));
+        if ((i === 0 && navLike(l)) || (i === gutters.length - 1 && navLike(r))) return true;
         const short = [l, r].some(ls => !proseLike(ls));
         return !short || rowAligned(l, r) < 0.6;
     });
@@ -229,7 +234,8 @@ function proseLike(lines) {
 /** Page-edge navigation: short capitalised labels ("INTRODUCTION", "SCENE 1"). */
 function navLike(lines) {
     const ts = lines.map(lineText).filter(Boolean);
-    const caps = ts.filter(t => t.split(/\s+/).length <= 4 && t.length <= 24 && !/[a-z]/.test(t) && /[A-Z]/.test(t));
+    // Words, not table codes such as "5R" or "12F".
+    const caps = ts.filter(t => t.split(/\s+/).length <= 4 && t.length <= 24 && !/[a-z]/.test(t) && /[A-Z]{3}/.test(t));
     return ts.length >= 3 && caps.length / ts.length >= 0.6;
 }
 
@@ -241,8 +247,20 @@ function rowAligned(a, b) {
 }
 
 /** Read the page: bands separated by lines that cross a gutter, each band column by column. */
-function layoutText(runs, gutters) {
+function layoutText(runs, gutters, pageHeight) {
     if (!gutters.length) return linesToText(groupLines(runs));
+    // In the top and bottom margins, a line across the columns is a running header or footer
+    // ("SCENE 3: THE DIRECT ROUTE"), and a lone number is the page number. A column's last line can
+    // sit right next to them, so they are removed here rather than merged into one line.
+    const inMargin = r => pageHeight && (r.y < pageHeight * 0.08 || r.y > pageHeight * 0.92);
+    const footer = new Set(runs.filter(r => inMargin(r) && crosses(r, gutters)));
+    // A page number stands alone on its line, or only next to that footer text. A value such as the
+    // "13" of "Condition Monitor: 13" at the top of a column has its label beside it and stays.
+    const sameLine = (a, b) => Math.abs(a.y - b.y) <= Math.max(2, Math.min(a.h, b.h) * 0.6);
+    const stripOf = r => gutters.filter(g => r.x + r.w / 2 > (g.start + g.end) / 2).length;
+    const pageNumber = r => inMargin(r) && /^\s*\d{1,4}\s*$/.test(r.str)
+        && runs.every(o => o === r || footer.has(o) || !sameLine(o, r) || stripOf(o) !== stripOf(r));
+    runs = runs.filter(r => !footer.has(r) && !pageNumber(r));
     const spanning = runs.filter(r => crosses(r, gutters));
     // Lines crossing a gutter, merged with any runs on the same baseline.
     const spanLines = groupLines(spanning);

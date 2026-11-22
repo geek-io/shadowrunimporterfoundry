@@ -120,8 +120,14 @@ function buildSpirit(system, f, plan, warnings) {
         if (!a) continue;
         if (a.relative !== undefined) attrs[key] = { base: a.relative, applies_special: true };
         else if (a.half) attrs[key] = { base: Math.floor(force / 2), applies_special: false };
-        else if (a.base !== undefined) attrs[key] = { base: a.base, applies_special: false };
+        else if (a.base !== undefined) {
+            attrs[key] = { base: a.base, applies_special: false };
+            // Printed "9(11)": the augmented value is matched after creation, as for characters.
+            if (a.augmented !== undefined && a.augmented !== a.base) (plan.reconcile.attributes ??= {})[key] = a.augmented;
+        }
     }
+    if (f.bound) system.bound = true;
+    if (f.services !== undefined) system.services = toNumber(f.services);
     if (f.attributes?.essence?.relative !== undefined) attrs.essence = { base: f.attributes.essence.relative, applies_special: true };
     system.attributes = attrs;
     if (f.drainAttribute) system.magic = { attribute: f.drainAttribute };

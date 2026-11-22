@@ -166,10 +166,10 @@ test('JSON: simplified, Foundry exports and wrappers', () => {
     assert.equal(lines.length, 2);
 });
 
-test('unstructured text is skipped, not imported', () => {
+test('unstructured text is left out quietly', () => {
     const { records, skipped } = parseText('SAMPLE CHAPTER\n\nJust some prose about the Sixth World.');
     assert.equal(records.length, 0);
-    assert.ok(skipped.length > 0);
+    assert.equal(skipped.length, 0, 'story text is expected in adventures and is not reported');
 });
 
 test('forced type turns a list of names into items', () => {
@@ -401,4 +401,128 @@ test('pdf columns: two columns, side navigation, tables and page numbers', async
     const rows = _internal.pageToText(table, 612, 'auto', 792).split('\n').filter(Boolean);
     assert.equal(rows.length, 31);
     assert.match(rows[1], /^Sample Pistol 0\s+5\(7\)\s+8P\s+-1\s+SA\s+5R\s+725¥$/);
+});
+
+test('adventure stat blocks: insect spirits, bound spirits, contact cards, headings', async () => {
+    const { parseGroupLine } = await import('../scripts/parsers/statblock.js');
+    assert.deepEqual(parseGroupLine('(FORCE 5 SOLDIER ANT SPIRITS, 3)'), { force: 5, spiritKind: 'SOLDIER ANT SPIRITS', groupSize: 3 });
+    assert.deepEqual(parseGroupLine('(1, FORCE 7, BOUND, 3 SERVICES)'), { groupSize: 1, force: 7, bound: true, services: 3 });
+    assert.deepEqual(parseGroupLine('(10)'), { groupSize: 10 });
+    assert.equal(parseGroupLine('(Thermographic vision), Hive Mind'), null);
+
+    const text = `Some story text about the van ride. The driver took the long way round through the
+bikes.
+
+HYBRID FORM
+(FORCE 4 SOLDIER BEETLE SPIRITS, 2)
+B A R S W L I C ESS EDG M
+7 6 7(9) 6 4 4 4 4 4 2 4
+Initiative: 9(11) + 2D6
+Condition Monitor: 12
+Limits: Physical 9, Mental 6, Social 6
+Armor: 8
+Skills: Assensing 4, Astral Combat 4, Unarmed Combat 4, Law Enforcement 3 (Professional Knowledge)
+Powers: Fear, Hive Mind, Sapience, and Venom
+Weaknesses: Allergy (insecticides, mild)
+Unique Qualities: All beetle spirits can fly and have the Flight
+skill and the Venom power.
+Weapons:
+Natural Weapon [unarmed, Acc 8, Reach —, DV 6P, AP –1]
+
+Scene 4 (Optional): The Long Way
+Scan This
+The runners take a detour through the docks.
+
+SPIRIT OF AIR
+(1, FORCE 5, BOUND, 2 SERVICES)
+B A R S W L I C ESS M
+6 8 9 3 5 5 6 5 5 5
+Initiative: 15 + 2D6
+Skills: Assensing 5, Astral Combat 5, Perception 5
+
+Cast of Shadows
+Sample Fixer
+A fixer who knows everyone in the sample sprawl and owes them all money.
+B A R S W L I C ESS
+3 3 3 2 4 5 5 6 6
+Initiative: 8 + 1D6
+Skills: Negotiation 6, Etiquette 5, Conjuring 2
+
+A fixer who knows everyone in the sample sprawl and
+owes them all money.
+
+SAMPLE FIXER
+Fixer
+Male Human
+
+Connection Rating: 3
+
+Loyalty:
+
+Key Active Skills: Negotiation, Etiq-
+uette
+
+Uses: Jobs, Gear
+
+A fixer who knows everyone in the sample sprawl and
+owes them all money.
+
+SAMPLE FIXER
+Fixer
+Male Human
+
+Connection Rating: 3
+
+Loyalty:
+
+Key Active Skills: Negotiation, Etiq-
+uette
+
+Uses: Jobs, Gear`;
+    const { records } = parseText(text);
+    assert.deepEqual(records.map(r => [r.documentName, r.type, r.name]), [
+        ['Actor', 'spirit', 'Soldier Beetle Spirit (Hybrid Form)'],
+        ['Actor', 'spirit', 'Spirit of Air'],
+        ['Actor', 'character', 'Sample Fixer'],
+        ['Item', 'contact', 'Sample Fixer'],
+    ], 'one contact for the repeated handout card; "bikes." is not a BIKES heading');
+    const [beetle, air, fixer, card] = records;
+    assert.equal(beetle.fields.force, 4);
+    assert.equal(beetle.fields.groupSize, 2);
+    assert.equal(beetle.fields.spiritType, 'soldier');
+    assert.equal(beetle.fields.initiative.meatspace.base, 11);
+    assert.match(beetle.fields.notes, /^All beetle spirits can fly and have the Flight skill and the Venom power\.$/);
+    assert.ok(beetle.children.some(c => c.name === 'Venom'));
+    assert.deepEqual(beetle.children.filter(c => c.type === 'weapon').map(c => c.name), ['Natural Weapon'], 'the scene heading ends the block');
+    const lk = beetle.skills.find(s => s.name === 'Law Enforcement');
+    assert.equal(lk.category, 'knowledge');
+    assert.equal(lk.knowledgeType, 'professional');
+    assert.equal(air.fields.bound, true);
+    assert.equal(air.fields.services, 2);
+    assert.equal(buildActor(air).data.system.services, 2);
+    assert.deepEqual(fixer.skills.filter(s => s.fromGroup).map(s => s.name), ['Banishing', 'Binding', 'Summoning'], 'Conjuring is a skill group');
+    assert.equal(card.fields.connection, '3');
+    assert.equal(card.fields.type, 'Fixer');
+    const sys = buildItem(card).data.system;
+    assert.equal(sys.connection, 3);
+    assert.equal(sys.type, 'Fixer');
+    assert.match(sys.description.value, /<strong>Key Active Skills:<\/strong> Negotiation, Etiquette/);
+});
+
+test('pdf: running footers next to the last line of a column', async () => {
+    const { _internal } = await import('../scripts/app/pdf.js');
+    const items = [];
+    const put = (str, x, y, size = 9) => items.push({ str, transform: [size, 0, 0, size, x, y], width: str.length * size * 0.45, height: size });
+    for (let i = 0; i < 60; i++) put(`Left column line ${i} with ordinary words in it`, 30, 720 - i * 11.5);
+    for (let i = 0; i < 40; i++) put(`Right column line ${i} with ordinary words in it`, 300, 740 - i * 11.5);
+    put('SCENE 3: A LONG RUNNING FOOTER TITLE', 120, 39, 12);   // crosses the gutter, right beside the last left line
+    put('13', 560, 40, 14);
+    // A value printed as its own run at the very top of a column is not a page number.
+    put('Condition Monitor:', 300, 752);
+    put('12', 380, 752);
+    const lines = _internal.pageToText(items, 612, 'auto', 792).split('\n').filter(Boolean);
+    assert.equal(lines[59], 'Left column line 59 with ordinary words in it');
+    assert.equal(lines[60], 'Condition Monitor: 12');
+    assert.equal(lines[61], 'Right column line 0 with ordinary words in it');
+    assert.ok(!lines.some(l => /SCENE 3|^13$/.test(l)));
 });
