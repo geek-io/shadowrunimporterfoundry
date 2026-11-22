@@ -1,0 +1,88 @@
+{
+    "items": [
+        {
+            "type": "weapon",
+            "name": "Sample Heavy Pistol",
+            "category": "Heavy Pistol",
+            "accuracy": "5(7)",
+            "damage": "8P",
+            "ap": -1,
+            "mode": "SA",
+            "rc": 0,
+            "ammo": "15(c)",
+            "avail": "5R",
+            "cost": 725,
+            "description": "Simplified-format weapon. Any of the fields can be left out.",
+            "source": "Sample p. 1"
+        },
+        {
+            "type": "spell",
+            "name": "Sample Bolt",
+            "category": "combat",
+            "spellType": "M",
+            "range": "LOS",
+            "damage": "P",
+            "duration": "I",
+            "drain": "F-3",
+            "descriptors": "Direct"
+        },
+        {
+            "type": "adept power",
+            "name": "Sample Reflexes",
+            "pp": 1.5,
+            "activation": "Passive",
+            "rating": 1
+        },
+        {
+            "type": "negative quality",
+            "name": "Sample Allergy",
+            "karma": 10
+        },
+        {
+            "type": "cyberware",
+            "name": "Sample Datajack",
+            "essence": 0.1,
+            "avail": "2",
+            "cost": 1000
+        }
+    ],
+    "actors": [
+        {
+            "type": "npc",
+            "name": "Sample Street Samurai",
+            "metatype": "ork",
+            "professionalRating": 3,
+            "attributes": { "body": 6, "agility": "5(6)", "reaction": "4(6)", "strength": 5, "willpower": 3, "logic": 2, "intuition": 4, "charisma": 2, "edge": 2 },
+            "initiative": "10 + 3D6",
+            "armor": 12,
+            "skills": { "Automatics": 6, "Blades": 5, "Pistols": 5, "Perception": 4, "Sneaking": 3 },
+            "knowledge": ["Gang Turf 3", "Corp Security 2"],
+            "languages": ["English N", "Japanese 2"],
+            "augmentations": ["Wired Reflexes 2", "Muscle Toner 1", "Smartlink"],
+            "weapons": ["Sample Heavy Pistol [Heavy Pistol, Acc 5(7), DV 8P, AP -1, SA, 15(c)]"],
+            "gear": ["Armor Jacket [12]", "Commlink (Rating 3)"]
+        },
+        {
+            "type": "spirit",
+            "name": "Spirit of Air",
+            "force": 4,
+            "attributes": { "body": "F-2", "agility": "F+3", "reaction": "F+4", "strength": "F-3", "willpower": "F", "logic": "F", "intuition": "F", "charisma": "F", "edge": "F", "magic": "F", "essence": "F" },
+            "skills": ["Assensing", "Astral Combat", "Perception", "Running", "Unarmed Combat"],
+            "powers": ["Accident", "Astral Form", "Concealment", "Confusion", "Engulf", "Materialization", "Movement", "Sapience", "Search"]
+        },
+        {
+            "type": "vehicle",
+            "name": "Sample Drone",
+            "handling": "4",
+            "speed": "3",
+            "accel": "2",
+            "body": 1,
+            "armor": 0,
+            "pilot": 3,
+            "sensor": 3,
+            "avail": "8",
+            "cost": 2000,
+            "isDrone": true
+        }
+    ]
+}

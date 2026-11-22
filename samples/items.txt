@@ -1,0 +1,82 @@
+COMBAT SPELLS
+
+MANABOLT (DIRECT)
+Type: M • Range: LOS • Damage: P
+Duration: I • DV: F - 3
+A bolt of mana that tears at a living target's aura. Example description written for this sample.
+
+FLAMESTRIKE (INDIRECT, ELEMENTAL)
+Type: P • Range: LOS • Damage: P
+Duration: I • DV: F - 1
+Sample text: a lance of fire. Fire damage applies.
+
+DETECTION SPELLS
+
+DETECT ENEMIES (ACTIVE, AREA)
+Type: M • Range: T • Duration: S • DV: F - 2
+Sample text: senses hostile intent within the area.
+
+ADEPT POWERS
+
+IMPROVED REFLEXES
+Cost: 1.5 PP (level 1), 2.5 PP (level 2), 3.5 PP (level 3)
+Activation: Passive
+Sample text: faster reactions.
+
+KILLING HANDS
+Cost: 0.5 PP
+Activation: Free Action
+Sample text: unarmed attacks deal physical damage.
+
+POSITIVE QUALITIES
+
+TOUGHNESS
+Cost: 9 Karma
+Sample text: harder to hurt.
+
+NEGATIVE QUALITIES
+
+ALLERGY
+Bonus: 5 to 25 Karma
+Sample text: reacts to a substance.
+
+COMPLEX FORMS
+
+PUPPETEER
+Target: Device • Duration: I • FV: L + 4
+Sample text: forces a device to act.
+
+---
+
+HEAVY PISTOLS ACC DAMAGE AP MODE RC AMMO AVAIL COST
+Ares Predator V 5(7) 8P -1 SA - 15(c) 5R 725¥
+Browning Ultra-Power 5(6) 8P -1 SA - 10(c) 4R 640¥
+Ruger Super Warhawk 5 9P -2 SS - 6(cy) 4R 400¥
+
+ASSAULT RIFLES ACC DAMAGE AP MODE RC AMMO AVAIL COST
+AK-97 5 10P -2 SA/BF/FA - 38(c) 4R 950¥
+Ares Alpha 5(7) 11P -2 SA/BF/FA 2 42(c) 11F 2,650¥
+
+BLADES ACC REACH DAMAGE AP AVAIL COST
+Combat Knife 6 1 (STR+2)P -3 4 300¥
+Katana 7 1 (STR+3)P -3 9R 1,000¥
+
+ARMOR ARMOR CAPACITY AVAIL COST
+Armor Jacket 12 12 2 1,000¥
+Lined Coat 9 9 4 900¥
+Helmet +2 6 2 100¥
+
+HEADWARE ESSENCE CAPACITY AVAIL COST
+Commlink 0.2 [2] - 2,000¥ +
+Datajack 0.1 - 2 1,000¥
+
+COMMLINKS DEVICE RATING DATA PROCESSING FIREWALL AVAIL COST
+Meta Link 1 1 1 2 100¥
+Hermes Ikon 5 5 6 14 3,000¥
+
+GROUNDCRAFT HANDL SPEED ACCEL BOD ARMOR PILOT SENSOR SEATS AVAIL COST
+Dodge Scoot 4/3 3 1 4 4 1 1 1 - 3,000¥
+Ford Americar 4/3 3 1 11 6 1 2 4 - 16,000¥
+
+DRONES HANDL SPEED ACCEL BOD ARMOR PILOT SENSOR AVAIL COST
+MCT Fly-Spy 4 3 2 1 0 3 3 8 2,000¥

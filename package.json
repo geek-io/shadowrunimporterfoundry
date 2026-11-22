@@ -1,0 +1,10 @@
+{
+    "name": "sr5-importer",
+    "private": true,
+    "type": "module",
+    "description": "Foundry VTT module: import Shadowrun 5e content from JSON, text and PDF.",
+    "scripts": {
+        "test": "node --test tests/*.test.mjs",
+        "check:schema": "node tests/schema/check.mjs"
+    }
+}

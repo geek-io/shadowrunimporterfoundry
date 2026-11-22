@@ -1,0 +1,130 @@
+{
+    "SR5IMPORTER": {
+        "Title": "Shadowrun 5e Importer",
+        "OpenButton": "SR5 Importer",
+        "Steps": {
+            "source": "Source",
+            "preview": "Preview",
+            "import": "Import"
+        },
+        "Labels": {
+            "Actor": "Actor",
+            "PastedText": "Pasted text"
+        },
+        "Source": {
+            "TextHeading": "Paste text or JSON",
+            "TextHint": "Stat blocks, rulebook entries, gear tables, or JSON. Separate unrelated entries with a line of three dashes (---). Text from .txt files and extracted PDFs lands here so you can fix it before parsing.",
+            "Placeholder": "Corporate Mage (Professional Rating 4)\nB A R S W L I C ESS M\n3 4 4(5) 2 5 5 4 3 5.8 5\nInitiative 9 + 1D6\nSkills Spellcasting 5, Counterspelling 5, Pistols 3\n...",
+            "FilesHeading": "Files",
+            "Drop": "Drop files here or click to choose",
+            "Formats": "JSON (Foundry exports or simplified), plain text (.txt, .md), PDF — several at once",
+            "ParseOptions": "Parsing",
+            "DefaultType": "Unidentified entries become",
+            "DefaultTypeHint": "Used when an entry has no recognisable type, labels or section heading.",
+            "ForceType": "Treat every entry as",
+            "ForceTypeHint": "Leave on Detect unless the whole source is one kind of thing (e.g. a list of spells).",
+            "Detect": "Detect automatically"
+        },
+        "Pdf": {
+            "Pages": "Pages",
+            "AllPages": "all, or e.g. 180-185",
+            "Layout": "Layout",
+            "ColumnsAuto": "Detect columns",
+            "Columns1": "One column",
+            "Columns2": "Two columns",
+            "Hint": "Extracted text is added to the text box above for review. Scanned (image-only) PDFs have no text to extract.",
+            "Reading": "Reading {name}, page {page}…",
+            "Done": "PDF text extracted. Review it, then Parse.",
+            "EmptyPages": "{name}: no text found on page(s) {pages}. These may be scanned images."
+        },
+        "Help": {
+            "Summary": "Formatting guide: what the importer expects",
+            "Intro": "Pick a kind of entry to see how it should be laid out. Insert example adds a sample to the text box so you can try it or copy its layout. Several entries can go in one paste; separate unrelated ones with a blank line or ---.",
+            "Example": "Example",
+            "Insert": "Insert example",
+            "Samples": "Load a sample file:"
+        },
+        "Preview": {
+            "Heading": "{count} entries found",
+            "Filter": "Filter by name or type",
+            "Hint": "Untick entries to skip them. Change the type to re-read an entry. Expand an entry to edit its data.",
+            "Data": "Creation data (editable JSON)",
+            "Plan": "Skills and owned items added after creation",
+            "Raw": "Source text",
+            "Selected": "selected"
+        },
+        "Import": {
+            "Destination": "Where should they go?",
+            "ActorsTo": "Actors into",
+            "ItemsTo": "Items into",
+            "ActorFolder": "Actor folder",
+            "ItemFolder": "Item folder",
+            "FolderPlaceholder": "Optional, e.g. NPCs/Gangers (created if missing)",
+            "Duplicates": "If a document with the same name and type exists",
+            "MatchItems": "Copy owned items from world Items and compendiums when the names match",
+            "MatchItemsHint": "Weapons, spells, powers, qualities and ware on stat blocks are copied with full data when found; otherwise they are built from the stat block.",
+            "Reconcile": "Match printed totals",
+            "ReconcileHint": "Adds an effect for augmented attributes like 4(5), and adjusts initiative, armor, condition monitors and limits to the numbers in the stat block.",
+            "OpenAfter": "Open sheets after import (first 5)",
+            "Ready": "{actors} actors and {items} items selected",
+            "Working": "Importing {name} ({done}/{total})",
+            "Done": "Imported {count} documents.",
+            "Failed": "{count} entries failed to import. See the summary.",
+            "Summary": "Import finished",
+            "SummaryLine": "{created} created, {replaced} replaced, {skipped} skipped, {failed} failed.",
+            "MatchedLine": "Owned items: {matched} copied from your library, {built} built from the stat block.",
+            "SkippedExisting": "already exists"
+        },
+        "Destination": {
+            "World": "World"
+        },
+        "Duplicates": {
+            "skip": "Skip it",
+            "replace": "Replace it (delete and recreate)",
+            "copy": "Import as a copy"
+        },
+        "Buttons": {
+            "Parse": "Parse",
+            "Import": "Import",
+            "Next": "Choose destination",
+            "Back": "Back to preview",
+            "StartOver": "Start over",
+            "ClearText": "Clear text",
+            "ExtractPdf": "Extract PDF text",
+            "Cancel": "Cancel",
+            "Remove": "Remove",
+            "Details": "Details",
+            "SelectAll": "Select all",
+            "SelectNone": "Select none"
+        },
+        "Notes": {
+            "TextAdded": "{name} added to the text box.",
+            "Skipped": "{count} table line(s) could not be read: {lines}"
+        },
+        "Defaults": {
+            "ArmorItem": "Armor (imported)",
+            "AugmentEffect": "Imported augmentations"
+        },
+        "Warnings": {
+            "CustomSkill": "Skill \"{name}\" was not found in the skills compendium and was created as a custom skill.",
+            "LegacySkillMissing": "Skill \"{name}\" has no matching active skill on this system version and was skipped.",
+            "ArmorAdjusted": "Armor modifier {diff} applied to match the printed armor value.",
+            "NameOnly": "No match in your Items or compendiums, created with the name only: {names}. Fill them in on the sheet, or import a compendium of them first and re-import."
+        },
+        "Errors": {
+            "WrongSystem": "SR5 Importer needs the Shadowrun 5th Edition system.",
+            "NothingFound": "Nothing to import was found. Open the Formatting guide under Parsing to see the layout each kind of entry needs, or choose a type under Parsing.",
+            "UnknownType": "\"{type}\" is not a {document} type in this system version.",
+            "ChildTypeUnknown": "{name}: item type \"{type}\" does not exist in this system version; skipped.",
+            "InvalidJson": "That JSON is not valid: {error}",
+            "FileTooLarge": "{name} is larger than 100 MB.",
+            "UnsupportedFile": "{name} is not a JSON, text or PDF file.",
+            "ReadFailed": "Could not read {name}: {error}",
+            "PdfFailed": "PDF extraction failed: {error}",
+            "CreateFailed": "Foundry did not create the document."
+        },
+        "Settings": {
+            "Options": "Remembered importer options"
+        }
+    }
+}

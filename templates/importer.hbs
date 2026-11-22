@@ -1,0 +1,223 @@
+<div class="sr5i">
+    <nav class="sr5i-steps">
+        {{#each steps}}
+        <button type="button" class="sr5i-step {{#if active}}active{{/if}}" data-action="setStep" data-step="{{id}}" {{#if disabled}}disabled{{/if}}>
+            <span class="bubble">{{n}}</span> {{label}}
+        </button>
+        {{/each}}
+    </nav>
+
+    <div class="sr5i-scroll">
+    {{!-- ============================ SOURCE ============================ --}}
+    {{#if (eq step "source")}}
+    <section class="sr5i-section">
+        <h3><i class="fa-solid fa-paste"></i> {{localize "SR5IMPORTER.Source.TextHeading"}}</h3>
+        <p class="hint">{{localize "SR5IMPORTER.Source.TextHint"}}</p>
+        <textarea name="sourceText" class="sr5i-text" spellcheck="false" placeholder="{{localize "SR5IMPORTER.Source.Placeholder"}}">{{state.text}}</textarea>
+        <div class="sr5i-row end">
+            <button type="button" data-action="clearText"><i class="fa-solid fa-eraser"></i> {{localize "SR5IMPORTER.Buttons.ClearText"}}</button>
+        </div>
+    </section>
+
+    <section class="sr5i-section">
+        <h3><i class="fa-solid fa-file-arrow-up"></i> {{localize "SR5IMPORTER.Source.FilesHeading"}}</h3>
+        <div class="sr5i-drop" data-action="pickFiles">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>{{localize "SR5IMPORTER.Source.Drop"}}</span>
+            <small>{{localize "SR5IMPORTER.Source.Formats"}}</small>
+        </div>
+        <input type="file" name="fileInput" multiple accept=".json,.jsonl,.ndjson,.txt,.md,.markdown,.pdf,application/pdf,application/json,text/plain" hidden>
+        {{#if files.length}}
+        <ul class="sr5i-files">
+            {{#each files}}
+            <li data-file-id="{{id}}">
+                <i class="fa-solid {{#if isPdf}}fa-file-pdf{{else}}fa-file-code{{/if}}"></i>
+                <span class="name">{{name}}</span>
+                <span class="size">{{sizeLabel}}</span>
+                {{#if isPdf}}
+                <label>{{localize "SR5IMPORTER.Pdf.Pages"}} <input type="text" data-file-field="pages" value="{{pages}}" placeholder="{{localize "SR5IMPORTER.Pdf.AllPages"}}"></label>
+                <label>{{localize "SR5IMPORTER.Pdf.Layout"}}
+                    <select data-file-field="columns">
+                        {{#each @root.columnOptions}}
+                        <option value="{{this.[0]}}" {{#if (eq this.[0] ../columns)}}selected{{/if}}>{{localize (concat "SR5IMPORTER." this.[1])}}</option>
+                        {{/each}}
+                    </select>
+                </label>
+                {{/if}}
+                <button type="button" class="icon" data-action="removeFile" data-tooltip="{{localize "SR5IMPORTER.Buttons.Remove"}}"><i class="fa-solid fa-xmark"></i></button>
+            </li>
+            {{/each}}
+        </ul>
+        {{/if}}
+        {{#if hasPdf}}
+        <div class="sr5i-row">
+            {{#if pdf.busy}}
+            <div class="sr5i-pdf-progress"><progress max="100" value="{{pdf.progress}}"></progress><span class="label">{{pdf.label}}</span></div>
+            <button type="button" data-action="cancelPdf"><i class="fa-solid fa-ban"></i> {{localize "SR5IMPORTER.Buttons.Cancel"}}</button>
+            {{else}}
+            <button type="button" data-action="extractPdf"><i class="fa-solid fa-file-lines"></i> {{localize "SR5IMPORTER.Buttons.ExtractPdf"}}</button>
+            <span class="hint">{{localize "SR5IMPORTER.Pdf.Hint"}}</span>
+            {{/if}}
+        </div>
+        {{/if}}
+    </section>
+
+    <section class="sr5i-section">
+        <h3><i class="fa-solid fa-sliders"></i> {{localize "SR5IMPORTER.Source.ParseOptions"}}</h3>
+        <div class="sr5i-grid">
+            <label>{{localize "SR5IMPORTER.Source.DefaultType"}}
+                <select name="defaultType">
+                    {{#each defaultTypeOptions}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+                </select>
+                <small>{{localize "SR5IMPORTER.Source.DefaultTypeHint"}}</small>
+            </label>
+            <label>{{localize "SR5IMPORTER.Source.ForceType"}}
+                <select name="forceType">
+                    <option value="">{{localize "SR5IMPORTER.Source.Detect"}}</option>
+                    {{#each forceTypeOptions}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+                </select>
+                <small>{{localize "SR5IMPORTER.Source.ForceTypeHint"}}</small>
+            </label>
+        </div>
+        <details class="sr5i-help sr5i-guide" {{#if guide.open}}open{{/if}}>
+            <summary><i class="fa-solid fa-circle-question"></i> {{localize "SR5IMPORTER.Help.Summary"}}</summary>
+            <p class="hint">{{localize "SR5IMPORTER.Help.Intro"}}</p>
+            <div class="sr5i-guide-topics">
+                {{#each guide.topics}}
+                <button type="button" class="sr5i-chip {{#if active}}active{{/if}}" data-action="guideTopic" data-topic="{{id}}">{{label}}</button>
+                {{/each}}
+            </div>
+            {{#with guide.current}}
+            <div class="sr5i-guide-body">
+                <h4>{{label}}</h4>
+                <ul>{{#each notes}}<li>{{this}}</li>{{/each}}</ul>
+                <div class="sr5i-row between">
+                    <strong>{{localize "SR5IMPORTER.Help.Example"}}</strong>
+                    <button type="button" data-action="insertExample" data-topic="{{id}}"><i class="fa-solid fa-file-import"></i> {{localize "SR5IMPORTER.Help.Insert"}}</button>
+                </div>
+                <pre class="sr5i-example">{{example}}</pre>
+            </div>
+            {{/with}}
+            <div class="sr5i-row">
+                <span>{{localize "SR5IMPORTER.Help.Samples"}}</span>
+                <button type="button" data-action="loadSample" data-sample="npcs.txt">npcs.txt</button>
+                <button type="button" data-action="loadSample" data-sample="items.txt">items.txt</button>
+                <button type="button" data-action="loadSample" data-sample="examples.json">examples.json</button>
+            </div>
+        </details>
+    </section>
+    {{#each parseNotes}}<p class="sr5i-note warn"><i class="fa-solid fa-triangle-exclamation"></i> {{this}}</p>{{/each}}
+    {{/if}}
+
+    {{!-- ============================ PREVIEW ============================ --}}
+    {{#if (eq step "preview")}}
+    <section class="sr5i-section">
+        <div class="sr5i-row between">
+            <h3><i class="fa-solid fa-list-check"></i> {{localize "SR5IMPORTER.Preview.Heading" count=counts.total}}</h3>
+            <input type="search" name="filter" value="{{state.filter}}" placeholder="{{localize "SR5IMPORTER.Preview.Filter"}}">
+        </div>
+        <div class="sr5i-row">
+            <button type="button" data-action="selectAll">{{localize "SR5IMPORTER.Buttons.SelectAll"}}</button>
+            <button type="button" data-action="selectNone">{{localize "SR5IMPORTER.Buttons.SelectNone"}}</button>
+            <span class="hint">{{localize "SR5IMPORTER.Preview.Hint"}}</span>
+        </div>
+        {{#each parseNotes}}<p class="sr5i-note warn"><i class="fa-solid fa-triangle-exclamation"></i> {{this}}</p>{{/each}}
+        <ol class="sr5i-entries">
+            {{#each entries}}
+            <li class="sr5i-entry {{#if error}}error{{/if}} {{#if hidden}}hidden{{/if}}" data-entry-id="{{id}}">
+                <div class="head">
+                    <input type="checkbox" name="include" {{#if include}}checked{{/if}} {{#if error}}disabled{{/if}}>
+                    <i class="fa-solid {{#if (eq documentName "Actor")}}fa-user{{else}}fa-suitcase{{/if}}" data-tooltip="{{documentName}}"></i>
+                    <input type="text" name="entryName" value="{{name}}">
+                    <select name="entryType">
+                        {{#each typeOptions}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+                    </select>
+                    {{#if warnings.length}}<span class="badge warn" data-tooltip="{{warningText}}"><i class="fa-solid fa-triangle-exclamation"></i> {{warnings.length}}</span>{{/if}}
+                    <button type="button" class="icon" data-action="toggleDetails" data-tooltip="{{localize "SR5IMPORTER.Buttons.Details"}}"><i class="fa-solid {{#if expanded}}fa-chevron-up{{else}}fa-chevron-down{{/if}}"></i></button>
+                    <button type="button" class="icon" data-action="removeEntry" data-tooltip="{{localize "SR5IMPORTER.Buttons.Remove"}}"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                <div class="meta">
+                    <span class="summary">{{summary}}</span>
+                    {{#if source}}<span class="source"><i class="fa-solid fa-file"></i> {{source}}</span>{{/if}}
+                </div>
+                {{#if error}}<p class="sr5i-note error">{{error}}</p>{{/if}}
+                {{#if expanded}}
+                <div class="details">
+                    {{#if warnings.length}}<ul class="warnings">{{#each warnings}}<li>{{this}}</li>{{/each}}</ul>{{/if}}
+                    <label>{{localize "SR5IMPORTER.Preview.Data"}}<textarea name="entryJson" spellcheck="false">{{json}}</textarea></label>
+                    {{#if planJson}}<label>{{localize "SR5IMPORTER.Preview.Plan"}}<textarea readonly spellcheck="false">{{planJson}}</textarea></label>{{/if}}
+                    {{#if raw}}<label>{{localize "SR5IMPORTER.Preview.Raw"}}<pre>{{raw}}</pre></label>{{/if}}
+                </div>
+                {{/if}}
+            </li>
+            {{/each}}
+        </ol>
+    </section>
+    {{/if}}
+
+    {{!-- ============================ IMPORT ============================ --}}
+    {{#if (eq step "import")}}
+    <section class="sr5i-section">
+        <h3><i class="fa-solid fa-folder-tree"></i> {{localize "SR5IMPORTER.Import.Destination"}}</h3>
+        <div class="sr5i-grid">
+            <label>{{localize "SR5IMPORTER.Import.ActorsTo"}}
+                <select data-option="actorDestination">{{#each actorDestinations}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}</select>
+            </label>
+            <label>{{localize "SR5IMPORTER.Import.ActorFolder"}}
+                <input type="text" data-option="actorFolder" value="{{options.actorFolder}}" list="sr5i-actor-folders" placeholder="{{localize "SR5IMPORTER.Import.FolderPlaceholder"}}">
+                <datalist id="sr5i-actor-folders">{{#each actorFolders}}<option value="{{this}}"></option>{{/each}}</datalist>
+            </label>
+            <label>{{localize "SR5IMPORTER.Import.ItemsTo"}}
+                <select data-option="itemDestination">{{#each itemDestinations}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}</select>
+            </label>
+            <label>{{localize "SR5IMPORTER.Import.ItemFolder"}}
+                <input type="text" data-option="itemFolder" value="{{options.itemFolder}}" list="sr5i-item-folders" placeholder="{{localize "SR5IMPORTER.Import.FolderPlaceholder"}}">
+                <datalist id="sr5i-item-folders">{{#each itemFolders}}<option value="{{this}}"></option>{{/each}}</datalist>
+            </label>
+            <label>{{localize "SR5IMPORTER.Import.Duplicates"}}
+                <select data-option="duplicates">{{#each duplicateOptions}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}</select>
+            </label>
+        </div>
+        <div class="sr5i-checks">
+            <label><input type="checkbox" data-option="matchItems" {{#if options.matchItems}}checked{{/if}}> {{localize "SR5IMPORTER.Import.MatchItems"}}<small>{{localize "SR5IMPORTER.Import.MatchItemsHint"}}</small></label>
+            <label><input type="checkbox" data-option="reconcile" {{#if options.reconcile}}checked{{/if}}> {{localize "SR5IMPORTER.Import.Reconcile"}}<small>{{localize "SR5IMPORTER.Import.ReconcileHint"}}</small></label>
+            <label><input type="checkbox" data-option="openAfter" {{#if options.openAfter}}checked{{/if}}> {{localize "SR5IMPORTER.Import.OpenAfter"}}</label>
+        </div>
+    </section>
+
+    {{#if progress}}
+    <div class="sr5i-import-progress"><progress max="{{progress.total}}" value="{{progress.done}}"></progress><span class="label"></span></div>
+    {{/if}}
+
+    {{#if summary}}
+    <section class="sr5i-section sr5i-summary">
+        <h3><i class="fa-solid fa-circle-check"></i> {{localize "SR5IMPORTER.Import.Summary"}}</h3>
+        <p>{{localize "SR5IMPORTER.Import.SummaryLine" created=summary.created.length replaced=summary.replaced.length skipped=summary.skipped.length failed=summary.failed.length}}</p>
+        {{#if (or summary.matched summary.built)}}<p class="hint">{{localize "SR5IMPORTER.Import.MatchedLine" matched=summary.matched built=summary.built}}</p>{{/if}}
+        <ul class="sr5i-results">
+            {{#each summary.created}}<li><a data-action="openDocument" data-uuid="{{uuid}}"><i class="fa-solid fa-plus"></i> {{name}}</a> <small>{{type}}</small>{{#each warnings}}<div class="warn">{{this}}</div>{{/each}}</li>{{/each}}
+            {{#each summary.replaced}}<li><a data-action="openDocument" data-uuid="{{uuid}}"><i class="fa-solid fa-rotate"></i> {{name}}</a> <small>{{type}}</small>{{#each warnings}}<div class="warn">{{this}}</div>{{/each}}</li>{{/each}}
+            {{#each summary.skipped}}<li class="muted"><i class="fa-solid fa-forward"></i> {{name}} <small>{{localize "SR5IMPORTER.Import.SkippedExisting"}}</small></li>{{/each}}
+            {{#each summary.failed}}<li class="error"><i class="fa-solid fa-xmark"></i> {{name}}: {{error}}</li>{{/each}}
+        </ul>
+    </section>
+    {{/if}}
+    {{/if}}
+    </div>
+
+    <footer class="sr5i-footer">
+        {{#if (eq step "source")}}
+        <button type="button" class="primary" data-action="parse" {{#if pdf.busy}}disabled{{/if}}><i class="fa-solid fa-wand-magic-sparkles"></i> {{localize "SR5IMPORTER.Buttons.Parse"}}</button>
+        {{/if}}
+        {{#if (eq step "preview")}}
+        <button type="button" data-action="clearEntries"><i class="fa-solid fa-arrow-left"></i> {{localize "SR5IMPORTER.Buttons.StartOver"}}</button>
+        <span class="count"><span data-count="included">{{counts.included}}</span> / {{counts.total}} {{localize "SR5IMPORTER.Preview.Selected"}}</span>
+        <button type="button" class="primary" data-action="setStep" data-step="import"><i class="fa-solid fa-arrow-right"></i> {{localize "SR5IMPORTER.Buttons.Next"}}</button>
+        {{/if}}
+        {{#if (eq step "import")}}
+        <button type="button" data-action="setStep" data-step="preview"><i class="fa-solid fa-arrow-left"></i> {{localize "SR5IMPORTER.Buttons.Back"}}</button>
+        <span class="count">{{localize "SR5IMPORTER.Import.Ready" actors=counts.actors items=counts.items}}</span>
+        <button type="button" class="primary" data-action="runImport" {{#unless canImport}}disabled{{/unless}}><i class="fa-solid fa-file-import"></i> {{localize "SR5IMPORTER.Buttons.Import"}}</button>
+        {{/if}}
+    </footer>
+</div>
