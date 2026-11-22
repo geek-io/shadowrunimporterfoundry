@@ -1,11 +1,13 @@
-# Publishes a Foundry release when a version tag (v0.1.5, v0.2.0, ...) is pushed.
-# Assets: module.json (the manifest Foundry installs from) and module.zip.
+# Publishes a Foundry release when module.json on main has a version with no release yet.
+# The release is tagged v<version>; assets are module.json (the manifest Foundry installs from) and module.zip.
+# Bump "version" and "download" in module.json, add the README changelog section, push to main.
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    paths: [module.json, .github/workflows/release.yml]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,26 +18,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check module.json matches the tag
+      - name: Read the version
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          node -e "
-            const m = require('./module.json');
-            const v = process.argv[1], tag = process.argv[2];
-            const dl = 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/download/' + tag + '/module.zip';
-            if (m.version !== v) { console.error('module.json version ' + m.version + ' does not match tag ' + tag); process.exit(1); }
-            if (m.download !== dl) { console.error('module.json download should be ' + dl); process.exit(1); }
-          " "$VERSION" "$GITHUB_REF_NAME"
+          VERSION=$(node -p "require('./module.json').version")
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/module.zip"
+          if [ "$(node -p "require('./module.json').download")" != "$DL" ]; then
+            echo "module.json download should be $DL"; exit 1
+          fi
 
       - name: Run parser tests
+        if: steps.ver.outputs.skip != 'true'
         run: node --test tests/*.test.mjs
 
       - name: Build module.zip
+        if: steps.ver.outputs.skip != 'true'
         run: git archive --format=zip -o module.zip HEAD -- . ':!.gitignore' ':!.github'
 
       - name: Release notes from the README changelog
+        if: steps.ver.outputs.skip != 'true'
         run: |
-          python3 - "${GITHUB_REF_NAME#v}" > release-notes.md <<'EOF'
+          python3 - "${{ steps.ver.outputs.version }}" > release-notes.md <<'EOF'
           import sys
           v = sys.argv[1]
           s = open('README.md', encoding='utf-8').read()
@@ -52,8 +65,11 @@ jobs:
           EOF
 
       - uses: softprops/action-gh-release@v2
+        if: steps.ver.outputs.skip != 'true'
         with:
-          name: ${{ github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.ver.outputs.tag }}
           body_path: release-notes.md
           files: |
             module.json
