@@ -313,7 +313,7 @@ test('formatting guide examples parse as documented', async () => {
     const expected = {
         npc: ['character'], critter: ['character'], spirit: ['spirit'], sprite: ['sprite'],
         vehicle: ['vehicle', 'vehicle', 'vehicle'], weapon: ['weapon', 'weapon', 'weapon'], armor: ['armor', 'armor', 'armor'],
-        ware: ['cyberware', 'cyberware', 'bioware'], gear: ['equipment', 'device'], spell: ['spell'],
+        ware: ['cyberware', 'cyberware', 'bioware'], gear: ['equipment', 'device'], host: ['host'], spell: ['spell'],
         adept: ['adept_power', 'adept_power'], quality: ['quality', 'quality', 'quality'], complex: ['complex_form'],
         critterpower: ['critter_power'], contact: ['contact'], json: ['character', 'weapon', 'quality'],
     };
@@ -322,4 +322,83 @@ test('formatting guide examples parse as documented', async () => {
         assert.deepEqual(res.records.map(r => r.type), expected[g.id], g.id);
         for (const r of res.records) assert.deepEqual(r.warnings ?? [], [], `${g.id}: ${r.name}`);
     }
+});
+
+test('hosts', () => {
+    const text = `HOST: SAMPLE NOODLE BAR
+Rating Attack Sleaze Data Proc. Firewall
+3 3 4 5 6
+Installed IC: Patrol IC, Tar Baby
+Slaved Devices: Cameras, the till
+Sculpting: A steaming
+noodle stall.
+Security Procedures: Patrol IC runs at all times. On an alert it
+launches Tar Baby.
+Pay Data: A list of regulars.`;
+    for (const t of [text, `Sample template\n${text}`, text.replace('HOST: SAMPLE NOODLE BAR', 'Host: Sample Noodle Bar')]) {
+        const hosts = parseText(t).records.filter(r => r.type === 'host');
+        assert.equal(hosts.length, 1);
+        const [r] = hosts;
+        assert.equal(r.name, 'Sample Noodle Bar');
+        assert.deepEqual([r.fields.rating, r.fields.attack, r.fields.sleaze, r.fields.data_processing, r.fields.firewall], ['3', '3', '4', '5', '6']);
+        assert.deepEqual(r.fields.ic, ['Patrol IC', 'Tar Baby']);
+        const sys = buildItem(r).data.system;
+        assert.equal(sys.rating, 3);
+        assert.equal(sys.customAttributes, true);
+        assert.deepEqual(['att1', 'att2', 'att3', 'att4'].map(k => sys.atts[k].value), [3, 4, 5, 6]);
+        assert.match(sys.description.value, /<strong>Sculpting:<\/strong> A steaming noodle stall\./);
+        assert.match(sys.description.value, /<strong>Security Procedures:<\/strong> Patrol IC runs at all times\. On an alert it launches Tar Baby\./);
+    }
+    // A host printed among NPCs: both are read.
+    const page = parseText(`${text}\n\nSAMPLE
+BOUNCERS
+(3, PROFESSIONAL RATING 2)
+B A R S W L I C ESS
+5 3 3 5 3 2 3 2 6
+Initiative: 6 + 1D6
+Condition Monitor: 11
+Skills: Clubs 4, Intimidation 3, Throwing
+Weapons 2, Unarmed Combat 4
+Gear: Armor vest [12]
+Weapons:
+Club [Club, Reach 1, Acc 4, DV 7P, AP —]`).records;
+    assert.deepEqual(page.map(r => [r.type, r.name]), [['host', 'Sample Noodle Bar'], ['character', 'Sample Bouncers']]);
+    const npc = page[1];
+    assert.equal(npc.fields.groupSize, 3);
+    assert.equal(npc.fields.professionalRating, 2);
+    assert.equal(npc.fields.description, undefined);
+    assert.ok(npc.skills.some(s => s.name === 'Throwing Weapons' && s.rating === 2), 'a list line starting with "Weapons" continues the skills');
+    assert.deepEqual(npc.children.map(c => [c.type, c.name]), [['armor', 'Armor vest'], ['weapon', 'Club']]);
+});
+
+test('pdf columns: two columns, side navigation, tables and page numbers', async () => {
+    const { _internal } = await import('../scripts/app/pdf.js');
+    const items = [];
+    const put = (str, x, y, size = 9) => items.push({ str, transform: [size, 0, 0, size, x, y], width: str.length * size * 0.5, height: size });
+    const prose = n => `Line ${n} of ordinary prose that fills most of a column`;
+    let y = 750;
+    put('HOST: SAMPLE NOODLE BAR', 30, y);
+    ['Rating', 'Attack', 'Sleaze', 'Data Proc.', 'Firewall'].forEach((t, i) => put(t, 30 + i * 46, y - 12));
+    ['3', '3', '4', '5', '6'].forEach((t, i) => put(t, 40 + i * 46, y - 24));
+    for (let i = 0; i < 40; i++) put(`Left ${prose(i)}`, 30, y - 40 - i * 11);
+    for (let i = 0; i < 44; i++) put(`Right ${prose(i)}`, 306, y + 2 - i * 11);
+    ['INTRODUCTION', 'SCENE 1', 'SCENE 2', 'SCENE 3', 'LEGWORK', 'DEBRIEFING'].forEach((t, i) => put(t, 585, 730 - i * 60, 7));
+    put('42', 300, 20, 7);
+    const text = _internal.pageToText(items, 612, 'auto', 792);
+    const lines = text.split('\n').filter(Boolean);
+    assert.equal(lines[0], 'HOST: SAMPLE NOODLE BAR');
+    assert.match(lines[1], /^Rating\s+Attack\s+Sleaze\s+Data Proc\.\s+Firewall$/);
+    assert.equal(lines[3], `Left ${prose(0)}`);
+    assert.equal(lines[42], `Left ${prose(39)}`);
+    assert.equal(lines[43], `Right ${prose(0)}`);
+    assert.equal(lines.length, 3 + 40 + 44, 'navigation tabs and the page number are left out');
+
+    // A full-page table is not split into columns.
+    const table = [];
+    const cell = (str, x, y) => table.push({ str, transform: [9, 0, 0, 9, x, y], width: str.length * 4.5, height: 9 });
+    ['HEAVY PISTOLS', 'ACC', 'DAMAGE', 'AP', 'MODE', 'AVAIL', 'COST'].forEach((t, i) => cell(t, [36, 200, 245, 300, 335, 470, 520][i], 740));
+    for (let r = 0; r < 30; r++) ['Sample Pistol ' + r, '5(7)', '8P', '-1', 'SA', '5R', '725¥'].forEach((t, i) => cell(t, [36, 200, 245, 300, 335, 470, 520][i], 726 - r * 14));
+    const rows = _internal.pageToText(table, 612, 'auto', 792).split('\n').filter(Boolean);
+    assert.equal(rows.length, 31);
+    assert.match(rows[1], /^Sample Pistol 0\s+5\(7\)\s+8P\s+-1\s+SA\s+5R\s+725¥$/);
 });

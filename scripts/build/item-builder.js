@@ -27,10 +27,17 @@ export function buildItem({ type, name, fields = {}, hint = {}, owned = false })
 
     // Description: a labeled stat line for what was parsed, then any description prose. The pasted source text is never copied in.
     const description = {};
-    // Weapons show every parsed stat in their own sheet fields, so they get no stat line.
-    const statLine = type === 'weapon' ? '' : describeFields(name, f, type);
+    // Weapons and hosts show every parsed stat in their own sheet fields, so they get no stat line.
+    const statLine = type === 'weapon' || type === 'host' ? '' : describeFields(name, f, type);
     const parts = [];
     if (statLine) parts.push(`<p>${escapeHTML(statLine)}</p>`);
+    // Hosts: Installed IC, Slaved Devices, Sculpting, Security Procedures, Pay Data... as printed.
+    if (type === 'host' && Array.isArray(f.sections)) {
+        for (const sec of f.sections) {
+            if (!has(sec.text) || /^(host\s+)?rating$/i.test(sec.label ?? '')) continue;
+            parts.push(sec.label ? `<p><strong>${escapeHTML(sec.label)}:</strong> ${escapeHTML(sec.text)}</p>` : textToHTML(sec.text));
+        }
+    }
     if (has(f.description)) parts.push(textToHTML(f.description));
     if (parts.length) description.value = parts.join('');
     if (has(f.source)) description.source = String(f.source).trim();
@@ -430,6 +437,8 @@ const BUILDERS = {
     host({ system, f }) {
         if (has(f.rating)) system.rating = toNumber(f.rating);
         deviceAttributes(system, f);
+        // The system derives host attributes from the rating unless they are custom; keep the printed ones.
+        if (system.atts) system.customAttributes = true;
     },
 
     metamagic() {},

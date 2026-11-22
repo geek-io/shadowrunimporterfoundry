@@ -7,6 +7,7 @@ import { parseLabeledLine } from './fields.js';
 import { resolveType, sectionHeading, isBioware } from './types.js';
 import { parseStatBlock, isAttributeHeader, isVehicleHeader, sectionOf } from './statblock.js';
 import { parseTable, parseTableHeader, parseLooseRow } from './tables.js';
+import { findHostBlocks, parseHostBlock } from './host.js';
 
 const SEPARATOR = /^\s*(?:-{3,}|={3,}|\*{3,}|_{3,}|#{3,}|—{2,})\s*$/;
 const DESCRIPTOR_WORDS = /^(direct|indirect|elemental|active|passive|directional|area|psychic|realistic|obvious|single[- ]sense|multi[- ]sense|mental|physical|environmental|damaging|essence|extended|sense|anchored|material link|minion|spell|spotter|mana|blood|contractual)$/i;
@@ -62,6 +63,19 @@ function applyForcedType(record, forceType) {
 /* ------------------------------------------------------------------ */
 
 function parseChunk(lines, context, opts, records, skipped) {
+    // 0. Matrix hosts ("HOST: NAME" and its Rating/Attack/Sleaze/Data Proc./Firewall table) are items
+    //    printed among an adventure's NPCs; cut them out first, then read what is around them.
+    const hosts = findHostBlocks(lines, { isStart: l => isAttributeHeader(l) || isVehicleHeader(l) || !!parseTableHeader(l) });
+    if (hosts.length) {
+        let pos = 0;
+        for (const b of hosts) {
+            if (b.start > pos) parseChunk(lines.slice(pos, b.start), context, opts, records, skipped);
+            records.push(parseHostBlock(lines.slice(b.start, b.end)));
+            pos = b.end;
+        }
+        if (pos < lines.length && lines.slice(pos).some(l => l.trim())) parseChunk(lines.slice(pos), context, opts, records, skipped);
+        return;
+    }
     // 1. Actor stat blocks take the whole region they cover.
     const actorStarts = findActorStarts(lines);
     if (actorStarts.length) {
@@ -88,10 +102,14 @@ function parseChunk(lines, context, opts, records, skipped) {
     parseItemRegion(lines, context, opts, records, skipped);
 }
 
+const isCaps = t => /[A-Z]{2}/.test(t) && !/[a-z]/.test(t);
+
 /** A line that can be an NPC name: short, no sentence punctuation, not a stat or label line. */
 function isActorTitle(line) {
     const t = line.trim();
     if (!t || t.length > 70 || /^[a-z(]/.test(t) || /[.,;:!?]$/.test(t)) return false;
+    // Weapon or gear stats ("Natural weapons (unarmed, Acc 12, DV 7P, AP -1)") are not names.
+    if (/\b(?:acc|dv|ap|reach|rc)\s*[-–—+(]?\s*\d/i.test(t)) return false;
     if (/[[\]|]/.test(t) || ACTOR_HINT_LINE.test(t) || sectionOf(t) || isAttributeHeader(t) || isVehicleHeader(t)) return false;
     if (parseLabeledLine(t) && !/^name\s*:/i.test(t)) return false;
     return t.replace(/\(.*?\)/g, '').trim().split(/\s+/).length <= 7 && /[A-Za-z]/.test(t);
@@ -123,8 +141,11 @@ function findActorStarts(lines) {
             if (/^name\s*:/i.test(t)) { title = j; break; }
             if (isActorTitle(t)) {
                 // Take the top of a run of name-like lines ("Halloweener Ganger" above "Ork enforcer").
+                // An all-caps name ("DOCWAGON" / "RESPONSE TEAM") only continues upward in capitals.
+                const caps = isCaps(t);
                 title = j;
-                while (title - 1 >= floor && lines[title - 1].trim() && isActorTitle(lines[title - 1])) title--;
+                while (title - 1 >= floor && lines[title - 1].trim() && isActorTitle(lines[title - 1])
+                    && (!caps || isCaps(lines[title - 1].trim()))) title--;
                 break;
             }
             if (belongsToBlock(t)) break;

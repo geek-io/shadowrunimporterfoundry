@@ -33,6 +33,7 @@ export function buildActor(record, opts = {}) {
     if (f.notes && f.notes !== f.description) parts.push(textToHTML(f.notes));
     const facts = [];
     if (f.professionalRating !== undefined) facts.push(`Professional Rating ${f.professionalRating}`);
+    if (f.groupSize > 1) facts.push(`Group of ${f.groupSize}`);
     if (f.tradition) facts.push(`Tradition: ${escapeHTML(f.tradition)}`);
     if (f.metavariant) facts.push(`Metavariant: ${escapeHTML(f.metavariant)}`);
     if (f.movement) facts.push(`Movement: ${escapeHTML(f.movement)}`);

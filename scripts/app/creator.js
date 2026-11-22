@@ -97,6 +97,14 @@ export function summarize(entry) {
         if (s.pp) bits.push(`${s.pp} PP`);
         if (s.karma) bits.push(`${s.karma} Karma`);
         if (s.technology?.rating) bits.push(`R${s.technology.rating}`);
+        if (entry.type === 'host') {
+            if (s.rating !== undefined) bits.push(`Rating ${s.rating}`);
+            const at = s.atts ?? {};
+            const v = ['att1', 'att2', 'att3', 'att4'].map(k => at[k]?.value);
+            if (v.some(x => x !== undefined)) bits.push(`A/S/D/F ${v.map(x => x ?? '-').join('/')}`);
+            const ic = entry.record?.fields?.ic;
+            if (ic?.length) bits.push(`IC: ${ic.join(', ')}`);
+        }
         if (s.technology?.availability) bits.push(`Avail ${s.technology.availability}`);
         if (s.technology?.cost) bits.push(`${s.technology.cost}¥`);
         if (s.category) bits.push(s.category);

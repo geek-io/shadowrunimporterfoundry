@@ -6,10 +6,11 @@ export const FORMAT_GUIDE = [
     {
         id: 'npc', label: 'NPC or grunt (stat block)', types: ['character'],
         notes: [
-            'First line: the name. "Name: short description" also works.',
+            'First line: the name (a name printed over two capitalised lines is joined). "Name: short description" also works.',
+            'A line such as (4, PROFESSIONAL RATING 3) or (2, FORCE 5) gives the group size and rating.',
             'Lines between the name and the attribute table become the biography.',
             'Attribute header B A R S W L I C ESS (add EDG, M or RES as needed), then the values. 4(5) means 4 base, 5 augmented.',
-            'Then one section per line, each starting with its label: Initiative, Condition Monitor, Limits, Armor, Skills, Knowledge Skills, Languages, Qualities, Augmentations, Gear, Weapons, Spells, Adept Powers, Complex Forms, Programs, Contacts, Tradition, Initiate Grade.',
+            'Then one section per line, each starting with its label (with or without a colon): Initiative, Condition Monitor, Limits, Armor, Skills, Knowledge Skills, Languages, Qualities, Augmentations, Gear, Weapons, Spells, Adept Powers, Complex Forms, Programs, Contacts, Tradition, Initiate Grade.',
             'List items are separated by commas. Stats go in brackets: Name [Category, Acc 5, DV 8P, AP -1, SA, 15(c)].',
             'A single Condition Monitor number (10) marks a grunt; 10/11 gives separate physical and stun monitors.',
             'Separate several NPCs with a blank line or ---.',
@@ -133,6 +134,24 @@ Sample Muscle Toner 0.2 - 8R 3,200¥`,
 
 COMMLINKS DEVICE RATING DATA PROCESSING FIREWALL AVAIL COST
 Sample Commlink 3 3 3 6 1,000¥`,
+    },
+    {
+        id: 'host', label: 'Matrix hosts', types: ['host'],
+        notes: [
+            'First line: Host: Name (or HOST: NAME).',
+            'Then the header Rating Attack Sleaze Data Proc. Firewall and a line with the five numbers.',
+            'Then labeled lines: Installed IC, Slaved Devices, Sculpting, Security Procedures, Pay Data (others are kept too). A label\'s text may wrap over several lines.',
+            'Hosts can sit among an adventure\'s NPCs; they are imported as host items and the NPCs as actors.',
+        ],
+        example: `Host: Sample Noodle Bar
+Rating Attack Sleaze Data Proc. Firewall
+3 3 4 5 6
+Installed IC: Patrol IC, Tar Baby
+Slaved Devices: Cameras, the till
+Sculpting: A steaming noodle stall
+Security Procedures: Patrol IC runs at all times. On an alert it
+launches Tar Baby.
+Pay Data: A list of regulars.`,
     },
     {
         id: 'spell', label: 'Spells and rituals', types: ['spell', 'ritual'],

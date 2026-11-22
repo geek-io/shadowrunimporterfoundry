@@ -81,6 +81,14 @@ function readAttributePairs(text) {
     return attributes;
 }
 
+const GROUP_LINE = /^\(\s*(?:(\d+)\s*[,;]\s*)?(professional\s+rating|pr|force|level|rating)\s*:?\s*(\d+)\s*\)$/i;
+
+/** An all-caps name line: "DOCWAGON", "RESPONSE TEAM". */
+function isCapsTitle(t) {
+    return !!t && t.length <= 40 && /[A-Z]{2}/.test(t) && !/[a-z]/.test(t) && !/[:\[\]|(),.;]/.test(t)
+        && t.split(/\s+/).length <= 5 && !isAttributeHeader(t) && !isVehicleHeader(t);
+}
+
 /* ------------------------------------------------------------------ */
 /* Sections                                                           */
 /* ------------------------------------------------------------------ */
@@ -131,7 +139,7 @@ export function sectionOf(line) {
     const s = line.replace(/^[•\-*\s]+/, '');
     for (const [key, re] of SECTIONS) {
         const m = re.exec(s);
-        if (m) return { key, rest: s.slice(m[0].length).replace(/^\s*[:\-–]?\s*/, '') };
+        if (m) return { key, rest: s.slice(m[0].length).replace(/^\s*[:\-–]?\s*/, ''), colon: /^\s*:/.test(s.slice(m[0].length)) };
     }
     return null;
 }
@@ -315,8 +323,29 @@ export function parseStatBlock(text, opts = {}) {
             title = inline[1].trim();
             descLines.push(inline[2].trim());
         }
-        for (let i = firstContentIndex + 1; i < stop; i++) {
+        // Names printed over two all-caps lines ("HYBRID ANT" / "SPIRIT SOLDIERS").
+        let i0 = firstContentIndex + 1;
+        if (isCapsTitle(title)) {
+            while (i0 < stop && isCapsTitle(lines[i0].trim()) && !sectionOf(lines[i0].trim())) {
+                title = `${title} ${lines[i0].trim()}`;
+                consumed.add(i0);
+                i0++;
+            }
+        }
+        for (let i = i0; i < stop; i++) {
             const t = lines[i].trim();
+            // "(4, PROFESSIONAL RATING 3)", "(2, FORCE 5)": how many appear, and their rating.
+            const group = GROUP_LINE.exec(t);
+            if (group) {
+                if (group[1]) f.groupSize = Number(group[1]);
+                const kind = group[2].toLowerCase();
+                const n = Number(group[3]);
+                if (/force/.test(kind)) f.force = n;
+                else if (/level/.test(kind)) f.level = n;
+                else f.professionalRating = n;
+                consumed.add(i);
+                continue;
+            }
             const sec = t ? sectionOf(t) : null;
             if (sec && sec.key !== 'notes') break;
             // "Body 4, Agility 3, ..." or "Attack L, Sleaze L+3, ..." – labeled attributes, not description.
@@ -363,11 +392,17 @@ export function parseStatBlock(text, opts = {}) {
     // ---- Sections ----
     const sections = [];
     let current = null;
+    // Books that write "Skills:" with a colon: a list line that merely starts with a section word
+    // ("Throwing" / "Weapons 4, Unarmed Combat 5") continues the list above it.
+    const colonStyle = lines.filter((l, i) => !consumed.has(i) && sectionOf(l.trim())?.colon).length >= 3;
+    const LIST_SECTIONS = new Set(['skills', 'knowledge', 'languages', 'qualities', 'augmentations', 'gear', 'weapons', 'spells', 'powers', 'adept_powers', 'complex_forms', 'programs', 'contacts', 'optional_powers', 'weaknesses']);
     lines.forEach((line, i) => {
         if (consumed.has(i)) return;
         const t = line.trim();
         if (!t) return;
-        const sec = sectionOf(t);
+        let sec = sectionOf(t);
+        if (sec && colonStyle && !sec.colon && current && LIST_SECTIONS.has(current.key)
+            && !/[.!?]$/.test(current.lines[current.lines.length - 1] ?? '')) sec = null;
         if (sec) {
             current = { key: sec.key, lines: [sec.rest] };
             sections.push(current);

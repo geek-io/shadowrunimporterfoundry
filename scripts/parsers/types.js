@@ -156,7 +156,7 @@ export function spiritTypeFromName(name) {
         if (SPIRIT_TYPES.includes(key)) return key;
         if (key === 'beast' || key === 'animal') return 'beasts';
         if (key === 'men') return 'man';
-        for (const t of SPIRIT_TYPES) if (new RegExp(`\\b${t.replace(/_/g, '[ _-]')}\\b`).test(c)) return t;
+        for (const t of SPIRIT_TYPES) if (new RegExp(`\\b${t.replace(/_/g, '[ _-]')}s?\\b`).test(c)) return t;
     }
     return '';
 }

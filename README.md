@@ -8,6 +8,14 @@ A Foundry VTT v13 and v14 module for the [Shadowrun 5th Edition system](https://
 
 <a href="https://patreon.com/geekioshow"><img src="assets/Patreon-Logo.png" alt="All my work is always free, but a little bit of help is always appreciated" width="240"></a>
 
+# v 0.1.6
+
+- **Matrix hosts import.** A host written as `Host: Name` (or `HOST: NAME`), the `Rating Attack Sleaze Data Proc. Firewall` table and labeled lines (Installed IC, Slaved Devices, Sculpting, Security Procedures, Pay Data) becomes a host item. Rating and the four matrix attributes go on the sheet as printed, and the labeled lines go into the description. Hosts printed among an adventure's NPCs are picked out, and the NPCs around them are still imported. Hosts have their own page in the formatting guide.
+- **PDF columns are read properly.** Column detection now finds the gutters on each page instead of assuming a split down the middle, so pages with two columns and a navigation sidebar no longer come out with lines from different columns mixed together. Side navigation tabs (INTRODUCTION, SCENE 1...), page numbers and running headers are left out, titles that cross both columns are kept in place, and full-page gear tables are not split.
+- **Adventure-style NPC headings:** names printed over two capitalised lines ("HYBRID ANT" / "SPIRIT SOLDIERS") are joined, and a line such as `(4, PROFESSIONAL RATING 3)` or `(2, FORCE 5)` sets the Professional Rating or Force and notes the group size in the biography instead of being copied into the description.
+- In stat blocks that write labels with a colon (`Skills:`), a wrapped list line that starts with a section word ("Throwing" / "Weapons 4, Unarmed Combat 5") stays in the list.
+- Insect spirit names in the plural ("Spirit Soldiers") get their spirit type.
+
 # v 0.1.5
 
 - **Formatting guide in the importer.** Under Parsing, open **Formatting guide** and pick a kind of entry (NPC, critter, spirit, sprite, vehicle, weapons, armor, ware, gear, spells, adept powers, qualities, complex forms, powers, contacts or JSON) to see the layout the importer expects, with an example. **Insert example** puts the example in the text box. Choosing a type under *Force type* opens its guide, and the guide opens on its own when nothing could be read.

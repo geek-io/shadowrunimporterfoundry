@@ -80,3 +80,15 @@ Ford Americar 4/3 3 1 11 6 1 2 4 - 16,000¥
 
 DRONES HANDL SPEED ACCEL BOD ARMOR PILOT SENSOR AVAIL COST
 MCT Fly-Spy 4 3 2 1 0 3 3 8 2,000¥
+
+---
+
+Host: Sample Noodle Bar
+Rating Attack Sleaze Data Proc. Firewall
+3 3 4 5 6
+Installed IC: Patrol IC, Tar Baby
+Slaved Devices: Cameras, the till
+Sculpting: A steaming noodle stall
+Security Procedures: Patrol IC runs at all times. On an alert it
+launches Tar Baby.
+Pay Data: A list of regulars.
