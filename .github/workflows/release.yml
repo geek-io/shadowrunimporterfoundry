@@ -1,0 +1,60 @@
+# Publishes a Foundry release when a version tag (v0.1.5, v0.2.0, ...) is pushed.
+# Assets: module.json (the manifest Foundry installs from) and module.zip.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check module.json matches the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const m = require('./module.json');
+            const v = process.argv[1], tag = process.argv[2];
+            const dl = 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/download/' + tag + '/module.zip';
+            if (m.version !== v) { console.error('module.json version ' + m.version + ' does not match tag ' + tag); process.exit(1); }
+            if (m.download !== dl) { console.error('module.json download should be ' + dl); process.exit(1); }
+          " "$VERSION" "$GITHUB_REF_NAME"
+
+      - name: Run parser tests
+        run: node --test tests/*.test.mjs
+
+      - name: Build module.zip
+        run: git archive --format=zip -o module.zip HEAD -- . ':!.gitignore' ':!.github'
+
+      - name: Release notes from the README changelog
+        run: |
+          python3 - "${GITHUB_REF_NAME#v}" > release-notes.md <<'EOF'
+          import sys
+          v = sys.argv[1]
+          s = open('README.md', encoding='utf-8').read()
+          part = s.split(f'# v {v}\n', 1)
+          sec = part[1].split('\n# v ', 1)[0].strip() if len(part) == 2 else ''
+          repo = 'https://github.com/geek-io/shadowrunimporterfoundry'
+          print('Import NPCs, critters, spirits, sprites, vehicles, gear, weapons, spells, powers, qualities and more into the Shadowrun 5th Edition system from JSON, plain text and PDF. Works with Foundry VTT v13 and v14.\n')
+          print('**Install:** in Foundry, go to *Add-on Modules → Install Module* and paste this manifest URL:\n')
+          print(f'```\n{repo}/releases/latest/download/module.json\n```\n')
+          if sec:
+              print(f'## What\'s new in v{v}\n')
+              print(sec)
+          print('\nThe full changelog is in the README.')
+          EOF
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: |
+            module.json
+            module.zip
