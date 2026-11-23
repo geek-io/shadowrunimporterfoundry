@@ -67,6 +67,7 @@ export const SKILL_ALIASES = {
     'throwing': 'throwing_weapons',
     'thrown weapons': 'throwing_weapons',
     'assessing': 'assensing',
+    'sneak': 'sneaking',
     'thrown weapon': 'throwing_weapons',
     'throwing weapon': 'throwing_weapons',
     'ritual spellcasting': 'ritual_spellcasting',
@@ -274,8 +275,10 @@ export function tidyName(name) {
         s = s.toLowerCase().split(' ').map((w, i) => {
             if (i > 0 && small.has(w)) return w;
             // Keep roman numerals and known acronyms upper case.
-            if (/^(i{1,3}|iv|v|vi{0,3}|ix|x)$/.test(w) || /^(ic|ar|vr|smg|lmg|mmg|hmg|ap|dv|rcc|sin|pan|ai|emp)$/.test(w)) return w.toUpperCase();
-            return w.replace(/(^|[-/(])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+            if (/^(i{1,3}|iv|v|vi{0,3}|ix|x)$/.test(w) || /^(ic|ar|vr|smg|lmg|mmg|hmg|ap|dv|rcc|sin|pan|ai|emp|ucas|cas|nan|mct|hk|gmc|cfd|ki|kfc|pcc|cz)$/.test(w)) return w.toUpperCase();
+            if (/^(?:[a-z]\.){2,}$/.test(w)) return w.toUpperCase();      // "U.C.A.S."
+            if (/^mct-/.test(w)) return `MCT-${w.slice(4).replace(/^[a-z]/, c => c.toUpperCase())}`;
+            return w.replace(/(^|[-/("“])([a-z])/g, (m, p, c) => p + c.toUpperCase());
         }).join(' ');
     }
     return s;

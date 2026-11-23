@@ -35,7 +35,8 @@
             "Hint": "Extracted text is added to the text box above for review. Columns are read one after another, and page numbers, running headers and side navigation tabs are left out. Scanned (image-only) PDFs have no text to extract.",
             "Reading": "Reading {name}, page {page}…",
             "Done": "PDF text extracted. Review it, then Parse.",
-            "EmptyPages": "{name}: no text found on page(s) {pages}. These may be scanned images."
+            "EmptyPages": "{name}: no text found on page(s) {pages}. These may be scanned images.",
+            "Decoded": "{name}: this PDF's fonts have no character table, so its text was decoded by the importer. Check the text before parsing; characters it could not work out are shown as �."
         },
         "Help": {
             "Summary": "Formatting guide: what the importer expects",

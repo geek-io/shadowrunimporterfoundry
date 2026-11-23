@@ -22,7 +22,7 @@ const HEADER_TOKENS = new Set([
 ]);
 const IGNORED_COLUMNS = new Set(['INIT', 'INI', 'AC', 'CM', 'D', 'MOVE']);
 
-const VALUE_TOKEN = /[FL]\s*\/\s*2|\(?\s*[FL]\s*(?:[x×*]\s*\d+)?\s*\)?\s*[+-]\s*\d+\s*D\s*6|\d+\s*\+\s*\d+\s*D\s*6|[FL]\s*[+-]\s*\d+|[FL](?![a-z])|\d+(?:\.\d+)?\s*\(\s*\d+(?:\.\d+)?\s*\)|\d+(?:\.\d+)?|[-–—](?=\s|$)/gi;
+const VALUE_TOKEN = /[FL]\s*\/\s*2|\(?\s*[FL]\s*(?:[x×*]\s*\d+)?\s*\)?\s*[+-]\s*\d+\s*D\s*6|\d+\s*\+\s*\d+\s*D\s*6|[FL]\s*[+-]\s*\d+|[FL](?![a-z])|\d+\s*\(\s*\+\d+\s*\)|\d+(?:\.\d+)?\s*\(\s*\d+(?:\.\d+)?\s*\)|\d+(?:\.\d+)?|[-–—](?=\s|$)/gi;
 
 /** Is this line an attribute header ("B A R S W L I C ESS")? */
 export function isAttributeHeader(line) {
@@ -46,13 +46,20 @@ function parseAttributeValue(token) {
     const rel = /^[FL]([+-]\d+)$/.exec(t);
     if (rel) return { relative: Number(rel[1]) };
     if (/^[-–—]$/.test(t)) return null;
+    // "4(+2)": a bonus on top of the base.
+    const bonus = /^(\d+)\(\+(\d+)\)$/.exec(t);
+    if (bonus) return { base: Number(bonus[1]), augmented: Number(bonus[1]) + Number(bonus[2]) };
     const aug = parseAugmented(t);
     return { base: aug.base, augmented: aug.augmented };
 }
 
 function readAttributeTable(header, valueLine) {
     const heads = header.trim().toUpperCase().split(/\s+/);
-    const values = String(valueLine ?? '').match(VALUE_TOKEN) ?? [];
+    // "B A R S W L I C ESS ESS": the first of two ESS columns is Edge, misprinted.
+    const ess = heads.reduce((a, h, i) => (h === 'ESS' ? [...a, i] : a), []);
+    if (ess.length === 2 && !heads.includes('EDG') && !heads.includes('EDGE')) heads[ess[0]] = 'EDG';
+    // "5 (7)" and "4 (+2)" are one value each.
+    const values = String(valueLine ?? '').replace(/(\d)\s+\((\+?\d+)\)/g, '$1($2)').match(VALUE_TOKEN) ?? [];
     const attributes = {};
     let initiative;
     const n = Math.min(heads.length, values.length);
@@ -60,9 +67,12 @@ function readAttributeTable(header, valueLine) {
         const h = heads[i];
         if (h === 'INIT' || h === 'INI') { initiative = values[i]; continue; }
         if (IGNORED_COLUMNS.has(h)) continue;
-        const key = ATTRIBUTE_ALIASES[h.toLowerCase()];
+        let key = ATTRIBUTE_ALIASES[h.toLowerCase()];
         if (!key) continue;
         const v = parseAttributeValue(values[i]);
+        // Only Essence can be fractional: a value such as 5.7 under M, RES or EDG is the Essence column
+        // mislabelled (or left out of the header) in the book.
+        if (key !== 'essence' && v && v.base !== undefined && !Number.isInteger(v.base) && !attributes.essence) key = 'essence';
         if (v) attributes[key] = v;
     }
     return { attributes, initiative, mismatch: heads.length !== values.length };
@@ -83,12 +93,17 @@ function readAttributePairs(text) {
 
 /** The line under an adventure NPC's name, or null. */
 export function parseGroupLine(line) {
-    const m = /^\((.+)\)$/.exec(String(line ?? '').trim());
+    // "(1 PER RUNNER) (PROFESSIONAL RATING 1)": several groups on one line.
+    const m = /^\((.+)\)$/.exec(String(line ?? '').trim().replace(/\)\s*\(/g, ', '));
     if (!m) return null;
     const out = {};
     for (const part of m[1].split(/\s*[,;]\s*/)) {
         let x;
         if (/^\d+$/.test(part)) out.groupSize = Number(part);
+        // "2 PER RUNNER", "12 + 3 PER RUNNER", "2 PER RUNNER AT ANY ONE TIME".
+        else if ((x = /^(\d+(?:\s*\+\s*\d+)?)\s+per\s+(runner|player|character|pc)s?\b\s*(.*)$/i.exec(part))) {
+            out.perRunner = `${x[1].replace(/\s+/g, ' ')} per ${x[2].toLowerCase()}${x[3] ? ` ${x[3].toLowerCase().replace(/^a t\b/, 'at')}` : ''}`;
+        }
         else if ((x = /^(?:professional\s+rating|pr|rating)\s*:?\s*(\d+)$/i.exec(part))) out.professionalRating = Number(x[1]);
         else if ((x = /^level\s*:?\s*(\d+)$/i.exec(part))) out.level = Number(x[1]);
         else if ((x = /^force\s*:?\s*(\d+)(?:\s+(.+))?$/i.exec(part))) {
@@ -96,14 +111,27 @@ export function parseGroupLine(line) {
             if (x[2]) out.spiritKind = x[2].trim();
         } else if (/^bound$/i.test(part)) out.bound = true;
         else if ((x = /^(\d+)\s+services?$/i.exec(part))) out.services = Number(x[1]);
-        else return null;
+        else (out._other ??= []).push(part);
+    }
+    // Other words ("LAW ENFORCEMENT; DWARF") are allowed beside a rating, not on their own.
+    if (out._other) {
+        if (out.professionalRating === undefined && out.force === undefined && out.level === undefined) return null;
+        const meta = out._other.find(w => /^(human|elf|dwarf|ork|orc|troll)s?$/i.test(w));
+        if (meta) out.metatype = METATYPES[meta.toLowerCase().replace(/s$/, '')];
+        const rest = out._other.filter(w => w !== meta);
+        if (rest.length) out.role = rest.join(', ');
+        delete out._other;
     }
     return Object.keys(out).length ? out : null;
 }
 
 /** An all-caps name line: "DOCWAGON", "RESPONSE TEAM". */
+const METATYPE_TAG = /^(?:(?:male|female|androgynous)\s+)?(?:human|elf|dwarf|ork|orc|troll)s?(?:\s+(?:male|female))?$/i;
+
 function isCapsTitle(t) {
-    return !!t && t.length <= 40 && /[A-Z]{2}/.test(t) && !/[a-z]/.test(t) && !/[:\[\]|(),.;]/.test(t)
+    // Periods only in abbreviations ("LT. FRANCOIS", "U.C.A.S."), not at the end of a sentence.
+    return !!t && !METATYPE_TAG.test(t) && t.length <= 40 && /[A-Z]{2}/.test(t) && !/[a-z]/.test(t) && !/[:\[\]|(),;]/.test(t)
+        && !/[A-Z]{4,}\.$|\.\s+[A-Z]{4,}\.$/.test(t)
         && t.split(/\s+/).length <= 5 && !isAttributeHeader(t) && !isVehicleHeader(t);
 }
 
@@ -111,10 +139,28 @@ function isCapsTitle(t) {
 /* Sections                                                           */
 /* ------------------------------------------------------------------ */
 
+/** "TROLL UCAS WEAPON SPECIALIST", "Dwarven U.C.A.S. Marine Pilot": metatype and role under a name. */
+const ROLE_LINE = /^(?:(?:male|female)\s+)?(?:human|elf|elven|dwarf|dwarven|ork|orkish|orc|troll)\b\s+\S/i;
+function isRoleLine(t) {
+    return ROLE_LINE.test(t) && t.length <= 50 && t.split(/\s+/).length <= 7 && !/[:\[\]|;]|[.!?]$/.test(t.replace(/\b(?:[A-Za-z]\.)+/g, ''))
+        && !sectionOf(t) && !isAttributeHeader(t);
+}
+function setRole(f, t) {
+    const m = /(human|elf|elven|dwarf|dwarven|ork|orc|troll)/i.exec(t);
+    if (m) f.metatype = METATYPES[m[1].toLowerCase().replace(/^elven$/, 'elf').replace(/^dwarven$/, 'dwarf')];
+    f.role = t.replace(/\s+/g, ' ').trim();
+}
+/** "Chris Jenkins", "“Stereotype” Abellard": a short line with every word capitalised. */
+function isTitleCaseLine(t) {
+    const words = t.split(/\s+/);
+    return !!t && words.length <= 4 && t.length <= 40 && !/[:\[\]|(),;!?]|\.$/.test(t) && !sectionOf(t)
+        && words.every(w => /^[“"']?[A-Z0-9]/.test(w));
+}
+
 const SECTIONS = [
     ['astral_initiative', /^astral\s+init(?:iative)?\b/i],
     ['matrix_initiative', /^(?:matrix|vr|ar)\s+init(?:iative)?\b/i],
-    ['initiative', /^(?:initiative|init)\b(?!\s*\w+\s+(?:test|score))/i],
+    ['initiative', /^(?:(?:physical|meatspace)\s+)?(?:initiative|init)\b(?!\s*\w+\s+(?:test|score|pass))/i],
     ['condition', /^(?:condition\s+monitors?(?:\s*\(\s*p\s*\/\s*s\s*\))?|cm)\b/i],
     ['limits', /^limits?\b/i],
     ['armor', /^armou?r\b(?=\s*:|\s*\d)/i],
@@ -146,9 +192,11 @@ const SECTIONS = [
     ['essence', /^essence\b(?=\s*:?\s*\d)/i],
     ['movement', /^movement\b/i],
     ['matrix', /^(?:matrix\s+attributes|device\s+rating)\b/i],
-    ['notes', /^(?:notes|special|description|tactics|background|unique\s+qualities|special\s+rules?)\b\s*:/i],
-    ['bound_spirits', /^bound\s+spirits?\b\s*:/i],
-    ['upgrades', /^(?:upgrades|modifications|mods)\b\s*:/i],
+    ['notes', /^(?:notes|special|description|tactics|background|unique\s+qualities|special\s+rules?)\b(?:\s*:|\s{2,}|\s*$)/i],
+    ['bound_spirits', /^bound\s+spirits?\b(?:\s*:|\s{2,}|\s*$)/i],
+    ['upgrades', /^(?:upgrades|modifications|mods)\b(?:\s*:|\s{2,}|\s*$)/i],
+    ['registered_sprites', /^registered\s+sprites?\b(?:\s*:|\s{2,}|\s*$)/i],
+    ['cyberdeck', /^(?:cyberdeck|commlink|deck|rcc|rigger command console)\b(?:\s*:|\s{2,}|\s*$)/i],
     ['lifestyle', /^lifestyle\b/i],
     ['nuyen', /^nuyen\b/i],
     ['karma', /^karma\b(?=\s*:?\s*\d)/i],
@@ -156,7 +204,11 @@ const SECTIONS = [
 ];
 
 export function sectionOf(line) {
-    const s = line.replace(/^[•\-*\s]+/, '');
+    let s = line.replace(/^[•\-*\s]+/, '');
+    // "(Gear: Armor jacket, ..." with the parenthesis never closed: a misprint, read as "Gear:".
+    if (/^\([A-Z][A-Za-z ]{1,25}:/.test(s) && (s.match(/\(/g).length > (s.match(/\)/g) ?? []).length)) s = s.slice(1);
+    // Printed labels start with a capital; a lowercase line is a wrapped sentence unless it has "label:".
+    if (/^[a-z]/.test(s) && !/^[a-z][a-z ()/]*:/.test(s)) return null;
     for (const [key, re] of SECTIONS) {
         const m = re.exec(s);
         if (m) return { key, rest: s.slice(m[0].length).replace(/^\s*[:\-–]?\s*/, ''), colon: /:\s*$/.test(m[0]) || /^\s*:/.test(s.slice(m[0].length)) };
@@ -211,7 +263,10 @@ function joinParagraphs(lines) {
 
 /** "Pistols (Semi-Automatics) 6 (+2)", "Automatics 5", "Firearms group 4", "English N", "Assensing" */
 export function parseSkillEntry(entry, { defaultRating } = {}) {
-    let s = entry.trim().replace(/\.$/, '');
+    // Dice pools and footnote marks: "Pistols [8]", "Intimidation (6)*".
+    let s = entry.trim().replace(/\.$/, '').replace(/\s*\[\s*\d+\s*\]/g, '').replace(/\*+$/, '').trim();
+    const parenRating = /^(.*\S)\s*\(\s*(\d+)\s*\)$/.exec(s);
+    if (parenRating && !/\d/.test(parenRating[1])) s = `${parenRating[1]} ${parenRating[2]}`;
     if (!s) return null;
     const out = { name: '', rating: undefined, specs: [], group: false, native: false };
 
@@ -219,13 +274,16 @@ export function parseSkillEntry(entry, { defaultRating } = {}) {
         out.native = true;
         s = s.replace(/\bnative\b|\s+N(?=\s*(\(|$))/i, '').trim();
     }
-    if (/\b(skill\s+)?group\b/i.test(s)) { out.group = true; s = s.replace(/\(?\s*\b(skill\s+)?group\b\s*\)?/i, ' ').trim(); }
+    if (/\b(skill\s+)?group(?=\s|\d|$|\))/i.test(s)) { out.group = true; s = s.replace(/\(?\s*\b(skill\s+)?group(?=\s|\d|$|\))\s*\)?/i, ' ').trim(); }
 
-    // Specializations in parentheses or brackets containing letters.
-    s = s.replace(/[([]\s*([^()[\]]*[A-Za-z][^()[\]]*)\s*[)\]]/g, (m, inner) => {
-        if (/^\+?\d+$/.test(inner.trim())) return m;
-        inner.split(/[,/]| or /).map(x => x.replace(/\+\d+/, '').trim()).filter(Boolean).forEach(x => out.specs.push(x));
-        return ' ';
+    // Specializations in parentheses or brackets containing letters (nested ones too:
+    // "(Tae Kwon Do w/ Counter Strike, Opposing Force [Block] and Sweep techniques +2)").
+    s = takeGroups(s, inner => {
+        if (/^\+?\d+$/.test(inner.trim()) || !/[A-Za-z]/.test(inner)) return false;
+        const flat = inner.replace(/[([][^()[\]]*[)\]]/g, '').replace(/[()[\]]/g, '');
+        if (/\b(w\/|techniques?)\b/i.test(flat)) out.specs.push(flat.replace(/\+\d+/, '').replace(/\s+/g, ' ').trim());
+        else flat.split(/[,/]| or /).map(x => x.replace(/\+\d+/, '').trim()).filter(Boolean).forEach(x => out.specs.push(x));
+        return true;
     });
     const rating = /(?:^|\s)(\d+)(?:\s*\(\s*\+?\d+\s*\))?\s*$/.exec(s) ?? /(?:^|\s)(\d+)\b/.exec(s);
     if (rating) {
@@ -240,6 +298,64 @@ export function parseSkillEntry(entry, { defaultRating } = {}) {
     if (out.rating === undefined && defaultRating !== undefined) out.rating = defaultRating;
     if (!out.name) return null;
     return out;
+}
+
+/**
+ * Books sometimes close "[" with ")" or "(" with "]": "Uzi IV [SMG, Acc 4, ..., 8 clips regular ammo)".
+ * Closers are matched to their openers so lists split in the right places.
+ */
+export function fixBrackets(text) {
+    const stack = [];
+    let out = '';
+    let lastComma = -1;          // position in out of the last comma inside an open "["
+    for (const ch of String(text ?? '')) {
+        if (ch === '[' && stack.length === 1 && stack[0] === '[' && lastComma >= 0
+            && !/^,\s*(?:w\/|with\b|and\b|incl|plus\b)/i.test(out.slice(lastComma))) {
+            // A second "[" inside an open one, after a comma: "Earbuds [Rating 2, w/ ..., fake SIN [Rating 6"
+            // – the first "]" is missing; close it before the comma that starts the new item.
+            out = `${out.slice(0, lastComma)}]${out.slice(lastComma)}`;
+            stack.pop();
+        }
+        if (ch === ',' && stack.length === 1 && stack[0] === '[') lastComma = out.length;
+        if (ch === '(' || ch === '[') { stack.push(ch); out += ch; if (stack.length === 1) lastComma = -1; continue; }
+        if (ch === ')' || ch === ']') {
+            if (!stack.length) { out += ch; continue; }
+            const open = stack.pop();
+            out += open === '[' ? ']' : ')';
+            continue;
+        }
+        out += ch;
+    }
+    return out;
+}
+
+function bracketDepth(text) {
+    let d = 0;
+    for (const ch of text) { if (ch === '(' || ch === '[') d++; else if ((ch === ')' || ch === ']') && d > 0) d--; }
+    return d;
+}
+
+/** A sentence rather than an item: several words with lowercase ones, no stats. */
+function isSentence(entry) {
+    const words = entry.split(/\s+/);
+    return words.length >= 5 && !/[[\]]|\b(acc|dv|ap)\s*[-–+(]?\d/i.test(entry)
+        && words.filter(w => /^[a-z]/.test(w)).length >= 3;
+}
+
+/** Remove top-level (…) / […] groups the callback accepts; an unclosed group runs to the end. */
+function takeGroups(s, accept) {
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        if (s[i] !== '(' && s[i] !== '[') { out += s[i]; continue; }
+        let depth = 0, j = i;
+        for (; j < s.length; j++) {
+            if (s[j] === '(' || s[j] === '[') depth++;
+            else if ((s[j] === ')' || s[j] === ']') && --depth === 0) break;
+        }
+        const inner = s.slice(i + 1, Math.min(j, s.length));
+        if (accept(inner)) { out += ' '; i = j; } else out += s[i];
+    }
+    return out.replace(/\s+/g, ' ').trim();
 }
 
 /** First top-level "( … )" group, allowing nested parentheses. */
@@ -275,8 +391,9 @@ function parseNamedEntry(entry) {
     // "Critical Strike 1 (Unarmed)": the rating before a parenthesised detail.
     const before = out.rating === undefined && paren ? /\s+(\d+)\s*(\(.*\))$/.exec(s) : null;
     if (before) { out.rating = Number(before[1]); s = `${s.slice(0, before.index)} ${before[2]}`.trim(); }
-    const trailing = /\s+(\d+(?:\.\d+)?)$/.exec(s);
-    if (trailing && out.rating === undefined) { out.rating = Number(trailing[1]); s = s.slice(0, trailing.index).trim(); }
+    const trailing = /\s+(?:rating\s+)?(\d+(?:\.\d+)?)$/i.exec(s);
+    // A weapon's model number is part of its name ("HK 227", "Fichetti Security 600").
+    if (trailing && out.rating === undefined && !/\b(?:acc|dv)\b/i.test(out.bracket)) { out.rating = Number(trailing[1]); s = s.slice(0, trailing.index).trim(); }
     out.name = s.replace(/\s+/g, ' ').trim();
     return out;
 }
@@ -315,6 +432,23 @@ function item(type, name, fields = {}, hint = {}) {
  */
 export function parseStatBlock(text, opts = {}) {
     const lines = String(text ?? '').split('\n').map(l => l.replace(/\s+$/, ''));
+    // Label tables wrap a long label: "Condition   15 / 12" with "Monitor" on the next line.
+    const WRAPPED = [[/^condition\b(?!\s+monitor)/i, /^monitors?$/i, 'Condition Monitor'],
+        [/^(physical|astral|matrix)\b(?!\s+initiative)(?=\s+\d)/i, /^initiative$/i, '$1 Initiative'],
+        [/^initiate\b(?!\s+grade)/i, /^grade$/i, 'Initiate Grade'],
+        [/^knowledge\b(?!\s+skills)/i, /^skills$/i, 'Knowledge Skills']];
+    for (let i = 0; i + 1 < lines.length; i++) {
+        // "Knowledge   Bollywood 8, ..." over "Skills  Media Business 6, ...": one label, values on both lines.
+        const k1 = /^knowledge\s{2,}(\S.*)$/i.exec(lines[i].trim()), k2 = /^skills\s{2,}(\S.*)$/i.exec(lines[i + 1]?.trim() ?? '');
+        if (k1 && k2) { lines[i] = `Knowledge Skills  ${k1[1]} ${k2[1]}`; lines.splice(i + 1, 1); continue; }
+        for (const [first, second, label] of WRAPPED) {
+            if (first.test(lines[i].trim()) && second.test(lines[i + 1].trim())) {
+                lines[i] = lines[i].trim().replace(first, label);
+                lines.splice(i + 1, 1);
+                break;
+            }
+        }
+    }
     const warnings = [];
     const record = {
         documentName: 'Actor',
@@ -349,9 +483,54 @@ export function parseStatBlock(text, opts = {}) {
         }
         // Names printed over two all-caps lines ("HYBRID ANT" / "SPIRIT SOLDIERS").
         let i0 = firstContentIndex + 1;
-        if (isCapsTitle(title)) {
-            while (i0 < stop && isCapsTitle(lines[i0].trim()) && !sectionOf(lines[i0].trim())) {
-                title = `${title} ${lines[i0].trim()}`;
+        // "PILAR CARRILLO," / "A.K.A. MOSAIC" → "Pilar Carrillo (a.k.a. Mosaic)".
+        if (/,$/.test(title) && /^a\.?k\.?a\.?\s+(.+)$/i.test(lines[i0]?.trim() ?? '')) {
+            const aka = /^a\.?k\.?a\.?\s+(.+)$/i.exec(lines[i0].trim())[1];
+            title = `${tidyName(title.replace(/,$/, ''))} (a.k.a. ${tidyName(aka)})`;
+            consumed.add(i0);
+            i0++;
+        }
+        // "MELEK, ELVEN" / "TOXIC SHAMAN": the name, then the role.
+        const commaRole = /^(.+?),\s*((?:male\s+|female\s+)?(?:human|elf|elven|dwarf|dwarven|ork|orkish|orc|troll)\b.*)$/i.exec(title);
+        if (commaRole) {
+            title = commaRole[1];
+            let role = commaRole[2];
+            while (i0 < stop && isCapsTitle(lines[i0].trim()) && !sectionOf(lines[i0].trim()) && !parseGroupLine(lines[i0].trim())) {
+                role = `${role} ${lines[i0].trim()}`;
+                consumed.add(i0);
+                i0++;
+            }
+            setRole(f, role);
+        } else if (isCapsTitle(title)) {
+            while (i0 < stop) {
+                const t = lines[i0].trim();
+                if (isRoleLine(t)) { setRole(f, t); consumed.add(i0); i0++; break; }
+                // "ROTO-DRONE (2)": the end of the name, and how many.
+                const count = /^(.+?)\s*\((\d+)\)$/.exec(t);
+                if (count && isCapsTitle(count[1]) && !sectionOf(count[1])) {
+                    title = `${title} ${count[1]}`;
+                    f.groupSize = Number(count[2]);
+                    consumed.add(i0);
+                    i0++;
+                    break;
+                }
+                if (!isCapsTitle(t) || sectionOf(t)) break;
+                title = `${title} ${t}`;
+                consumed.add(i0);
+                i0++;
+            }
+        } else {
+            // "Warrant Officer" / "Chris Jenkins" / "Dwarven U.C.A.S. Marine Pilot": name lines in title
+            // case, joined only when a role line follows them.
+            let j = i0;
+            while (j < stop && j - i0 < 3 && isTitleCaseLine(lines[j].trim()) && !isRoleLine(lines[j].trim())) j++;
+            if (j > i0 && j < stop && isRoleLine(lines[j].trim())) {
+                title = [title, ...lines.slice(i0, j).map(l => l.trim())].join(' ');
+                for (let k = i0; k <= j; k++) consumed.add(k);
+                setRole(f, lines[j].trim());
+                i0 = j + 1;
+            } else if (isRoleLine(lines[i0]?.trim() ?? '')) {
+                setRole(f, lines[i0].trim());
                 consumed.add(i0);
                 i0++;
             }
@@ -363,6 +542,15 @@ export function parseStatBlock(text, opts = {}) {
             const group = parseGroupLine(t);
             if (group) {
                 Object.assign(f, group);
+                consumed.add(i);
+                continue;
+            }
+            // "FEMALE HUMAN" / "HUMAN, PROFESSIONAL RATING 2" under the name.
+            const tag = /^((?:(?:male|female|androgynous)\s+)?(?:human|elf|dwarf|ork|orc|troll)s?(?:\s+(?:male|female))?)(?:\s*[,;]\s*professional\s+rating\s*(\d+))?$/i.exec(t);
+            if (tag) {
+                const m = /(human|elf|dwarf|ork|orc|troll)/i.exec(tag[1]);
+                f.metatype = METATYPES[m[1].toLowerCase()];
+                if (tag[2]) f.professionalRating = Number(tag[2]);
                 consumed.add(i);
                 continue;
             }
@@ -421,6 +609,8 @@ export function parseStatBlock(text, opts = {}) {
     // Books that write "Skills:" with a colon: a list line that merely starts with a section word
     // ("Throwing" / "Weapons 4, Unarmed Combat 5") continues the list above it.
     const colonStyle = lines.filter((l, i) => !consumed.has(i) && sectionOf(l.trim())?.colon).length >= 3;
+    // Label tables print "Label  value" with a wide gap and no colon.
+    const labelTable = !colonStyle && lines.filter((l, i) => !consumed.has(i) && sectionOf(l.trim()) && /^\S+(?: \S+)?\s{2,}\S/.test(l.trim())).length >= 3;
     const LIST_SECTIONS = new Set(['skills', 'knowledge', 'languages', 'qualities', 'augmentations', 'gear', 'weapons', 'spells', 'powers', 'adept_powers', 'complex_forms', 'programs', 'contacts', 'optional_powers', 'weaknesses']);
     lines.forEach((line, i) => {
         if (consumed.has(i)) return;
@@ -431,6 +621,28 @@ export function parseStatBlock(text, opts = {}) {
             && !/[.!?]$/.test(current.lines[current.lines.length - 1] ?? '')) sec = null;
         // A wrapped sentence that happens to start with a section word ("skill (p. 394, SR5) and ...").
         if (sec && current && !sec.colon && /^[a-z]/.test(t)) sec = null;
+        // Inside an open bracket ("jammer (area," / "Rating 4)") the line carries on the item above.
+        // (Only the last two lines count, so a bracket the book never closed earlier doesn't swallow the block.)
+        if (sec && current && bracketDepth(current.lines.slice(-2).join(' ')) > 0) sec = null;
+        // "Orthoskin" / "Rating 4, Pain Editor, ...": a wrapped list item, not a Rating line.
+        if (sec?.key === 'rating' && current && LIST_SECTIONS.has(current.key) && /^rating\s*:?\s*\d+\s*,/i.test(t)
+            && !/,$/.test(current.lines[current.lines.length - 1] ?? '')) sec = null;
+        // Label tables ("Skills  Pistols 4"): an unknown label in the label column ("CFD Infection  Matrix
+        // entity concentration 6") starts its own note instead of running onto the list above.
+        if (!sec && labelTable && current) {
+            const u = /^([A-Z][A-Za-z]+(?: [A-Za-z]+){0,2})\s{2,}(\S.*)$/.exec(t);
+            if (u && !/,$/.test(current.lines[current.lines.length - 1] ?? '')) {
+                current = { key: 'other_label', lines: [`${u[1]}: ${u[2]}`] };
+                sections.push(current);
+                return;
+            }
+        }
+        // A footnote ("* A Thunderbird magician must ...") goes to the notes, not onto the list above.
+        if (!sec && /^\*\s*[A-Z]/.test(t) && t.split(/\s+/).length >= 5) {
+            current = { key: 'notes', lines: [t.replace(/^\*\s*/, '')] };
+            sections.push(current);
+            return;
+        }
         if (sec) {
             current = { key: sec.key, lines: [sec.rest] };
             sections.push(current);
@@ -486,7 +698,7 @@ function detectActorType(record) {
     if (/\bic\b|intrusion countermeasure/.test(name) && !f.attributes.body) return 'ic';
     if (/\bspirit\b|elemental|guardian spirit|watcher/.test(name) || (relative && f.force !== undefined) || (relative && !f.attributes.attack)) return 'spirit';
     // Insect spirits and other Force-rated beings printed with plain numbers: "(1, FORCE 5)", "(FORCE 6 SCOUT ROACH SPIRIT)".
-    if (f.force !== undefined && f.professionalRating === undefined && (f.spiritKind || f.attributes.magic)) return 'spirit';
+    if (f.force !== undefined && f.professionalRating === undefined && !f.metatype && (f.spiritKind || f.attributes.magic)) return 'spirit';
     return 'character';
 }
 
@@ -503,6 +715,8 @@ function finalizeByType(record) {
     delete f._weaknesses; delete f._powers;
 
     if (record.type === 'spirit') {
+        // "(RATING 7)" under a spirit's name is its Force.
+        if (f.force === undefined && f.professionalRating !== undefined) { f.force = f.professionalRating; delete f.professionalRating; }
         f.spiritType = (f.spiritKind && spiritTypeFromName(f.spiritKind)) || spiritTypeFromName(record.name);
         if (!f.spiritType) record.warnings.push('Spirit type not recognised from the name; set it on the sheet.');
         if (f.force === undefined) {
@@ -533,9 +747,9 @@ function finalizeByType(record) {
 
 export function parseInitiative(text) {
     const s = String(text ?? '').replace(/\s+/g, '');
-    // "10 + 3D6", or "9(10) + 3D6" (base and augmented; the printed total is the augmented one).
-    const m = /(\d+)(?:\((\d+)\))?\+(\d+)D6/i.exec(s);
-    if (m) return { base: Number(m[2] ?? m[1]), dice: Number(m[3]) };
+    // "10 + 3D6", "9(10) + 3D6", "9 (12) + 1(4)D6", "8 (9) + D6": the printed totals are the augmented ones.
+    const m = /(\d+)(?:\((\d+)\))?\+(\d*)(?:\((\d+)\))?D6/i.exec(s);
+    if (m) return { base: Number(m[2] ?? m[1]), dice: Number(m[4] ?? (m[3] || 1)) };
     const rel = /\(?[FL](?:[x×*](\d+))?\)?([+-]\d+)?\+(\d+)D6/i.exec(s);
     if (rel) return { multiplier: Number(rel[1] ?? 1), constant: Number(rel[2] ?? 0), dice: Number(rel[3]) };
     const dice = /(\d+)D6/i.exec(s);
@@ -581,7 +795,9 @@ export function vehicleFromColumns(heads, tokens) {
 function handleSection(record, key, lines, warnings) {
     const f = record.fields;
     const text = joinListLines(lines);
-    const list = () => splitList(text).map(x => x.trim()).filter(x => x && !/^(none|-|—)$/i.test(x));
+    // Entries without a word ("(+2)" left over when a line is missing from the PDF) are skipped.
+    // "...with helmet [w/ chemseal] Hermes Ikon commlink [...]": a comma missing between two items.
+    const list = () => splitList(fixBrackets(text).replace(/(\w[^,[\]]*\[[^\]]*\])\s+(?=[A-Z][a-z]+ [A-Z])/g, '$1, ')).map(x => x.trim()).filter(x => x && !/^(none|-|—)$/i.test(x) && /[A-Za-z]{2}/.test(x));
     switch (key) {
         case 'initiative': {
             const init = parseInitiative(text);
@@ -676,9 +892,14 @@ function handleSection(record, key, lines, warnings) {
             break;
         }
         case 'augmentations': {
-            for (const entry of list()) {
+            // "[all betaware]  Bone Density 4, Orthoskin Rating 4": a grade for the whole list.
+            let all = '';
+            for (let entry of list()) {
+                const lead = /^\[([^\]]*)\]\s*(.*)$/.exec(entry);
+                if (lead) { all = lead[1].replace(/^all\s+/i, '').trim(); entry = lead[2]; }
+                if (!entry) continue;
                 const e = parseNamedEntry(entry);
-                const fields = { rating: e.rating, grade: `${e.paren} ${e.bracket}`, notes: [e.paren, e.bracket].filter(Boolean).join('; ') || undefined };
+                const fields = { rating: e.rating, grade: `${e.paren} ${e.bracket} ${all}`.trim() || undefined, notes: [e.paren, e.bracket].filter(Boolean).join('; ') || undefined };
                 if (e.bracket) Object.assign(fields, parseStatTokens(e.bracket), { notes: fields.notes });
                 if (fields.damage) delete fields.notes; // a cyber-weapon: its stats go on the item, not in notes
                 record.children.push(item(isBioware(e.name) ? 'bioware' : 'cyberware', e.name, fields));
@@ -687,6 +908,8 @@ function handleSection(record, key, lines, warnings) {
         }
         case 'weapons': {
             for (const entry of list()) {
+                // A sentence about the weapon above ("Target hit suffers from disorientation and nausea").
+                if (isSentence(entry)) { f.notes = [f.notes, entry].filter(Boolean).join('\n'); continue; }
                 const loose = !entry.includes('[') ? parseLooseRow(entry, 'weapon') : null;
                 if (loose?.fields.damage) { record.children.push(item('weapon', loose.name, loose.fields)); continue; }
                 const e = parseNamedEntry(entry);
@@ -813,6 +1036,18 @@ function handleSection(record, key, lines, warnings) {
             break;
         }
         case 'notes': f.notes = [f.notes, text].filter(Boolean).join('\n\n'); break;
+        case 'registered_sprites':
+            f.notes = [f.notes, `Registered sprites: ${text}`].filter(Boolean).join('\n\n');
+            break;
+        case 'cyberdeck':
+            for (const entry of list()) {
+                const e = parseNamedEntry(entry);
+                record.children.push(item('device', e.name, { ...parseStatTokens(e.bracket || e.paren || ''), category: /commlink/i.test(entry) ? 'commlink' : 'cyberdeck' }));
+            }
+            break;
+        case 'other_label':
+            f.notes = [f.notes, text].filter(Boolean).join('\n\n');
+            break;
         case 'bound_spirits':
             f.notes = [f.notes, `Bound spirits: ${text}`].filter(Boolean).join('\n\n');
             break;

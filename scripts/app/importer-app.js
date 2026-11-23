@@ -268,6 +268,7 @@ export class SR5ImporterApp extends HandlebarsApplicationMixin(ApplicationV2) {
                     },
                 });
                 if (result.emptyPages.length) notes.push(t('Pdf.EmptyPages', { name: file.name, pages: result.emptyPages.join(', ') }));
+                if (result.decoded) notes.push(t('Pdf.Decoded', { name: file.name }));
                 texts.push(result.text);
                 if (token.cancelled) break;
             }

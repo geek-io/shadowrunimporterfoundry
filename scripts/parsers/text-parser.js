@@ -23,7 +23,7 @@ const ACTOR_HINT_LINE = /^(initiative|init|condition monitor|limits|skills|armor
  * @returns {{records: object[], skipped: string[]}}
  */
 export function parseText(text, opts = {}) {
-    const clean = normalizeText(text);
+    const clean = joinSplitParens(normalizeText(text));
     const chunks = splitChunks(clean);
     const records = [];
     const skipped = [];
@@ -37,7 +37,7 @@ export function parseText(text, opts = {}) {
         if (opts.forceType) applyForcedType(r, opts.forceType);
         r.source = opts.sourceLabel ?? 'text';
     }
-    return { records: dedupe(records), skipped };
+    return { records: mergeReprints(dedupe(records)), skipped };
 }
 
 /** Identical entries printed more than once (handout cards, a vehicle repeated in two scenes) import once. */
@@ -49,6 +49,74 @@ function dedupe(records) {
         seen.add(key);
         return true;
     });
+}
+
+/**
+ * The same NPC printed twice (in a scene and again in the cast pages at the back), with small typos
+ * between the copies, imports once. Copies count as the same when the name and type match and every
+ * attribute both print is the same. The fuller copy is kept, and anything only the other one has
+ * (an item, a skill, a missing attribute, a longer description) is added to it.
+ */
+function mergeReprints(records) {
+    const norm = s => String(s ?? '').toLowerCase().replace(/[“”"'’‘]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const out = [];
+    for (const r of records) {
+        const twin = r.documentName === 'Actor' && out.find(o => o.documentName === 'Actor' && o.type === r.type
+            && norm(o.name) === norm(r.name) && sameStats(o, r));
+        if (!twin) { out.push(r); continue; }
+        const merged = mergeTwo(twin, r, norm);
+        out[out.indexOf(twin)] = merged;
+    }
+    return out;
+}
+
+function sameStats(a, b) {
+    const A = a.fields?.attributes ?? {}, B = b.fields?.attributes ?? {};
+    const shared = Object.keys(A).filter(k => k in B);
+    if (shared.length < 3 && a.type !== 'vehicle') return false;
+    if (!shared.every(k => A[k]?.base === B[k]?.base && (A[k]?.augmented ?? A[k]?.base) === (B[k]?.augmented ?? B[k]?.base))) return false;
+    const va = a.fields?.vehicle, vb = b.fields?.vehicle;
+    if (va || vb) return !!va && !!vb && ['handling', 'speed', 'body', 'armor', 'pilot', 'sensor'].every(k => va[k] === vb[k]);
+    return true;
+}
+
+function mergeTwo(a, b, norm) {
+    const score = r => (r.skills?.length ?? 0) + (r.children?.length ?? 0) + (r.fields?.description ? 3 : 0);
+    const [keep, other] = score(b) > score(a) ? [b, a] : [a, b];
+    const r = structuredClone(keep);
+    const f = r.fields, o = other.fields;
+    for (const [k, v] of Object.entries(o.attributes ?? {})) f.attributes[k] ??= v;
+    for (const [k, v] of Object.entries(o)) {
+        if (k === 'attributes' || k === 'description' || k === 'notes') continue;
+        if (f[k] === undefined) f[k] = v;
+    }
+    // Scenes that use the same NPC in different numbers: keep both counts.
+    if (o.perRunner && f.perRunner && o.perRunner !== f.perRunner) f.perRunner = `${f.perRunner} or ${o.perRunner}`;
+    if ((o.description?.length ?? 0) > (f.description?.length ?? 0)) f.description = o.description;
+    if (o.notes && !(f.notes ?? '').includes(o.notes)) f.notes = [f.notes, o.notes].filter(Boolean).join('\n\n');
+    // One name inside the other ("Commlink" / "Implanted Transys Avalon commlink") is the same thing.
+    const covered = (list, name) => list.some(x => { const a1 = norm(x.name), b1 = norm(name); return a1 === b1 || a1.includes(b1) || b1.includes(a1); });
+    r.skills = r.skills ?? [];
+    for (const s of other.skills ?? []) if (!covered(r.skills, s.name)) r.skills.push(s);
+    r.children = r.children ?? [];
+    for (const c of other.children ?? []) if (!covered(r.children.filter(x => x.type === c.type), c.name)) r.children.push(c);
+    r.raw = [keep.raw, other.raw].filter(Boolean).join('\n\n');
+    r.warnings = [...new Set([...(keep.warnings ?? []), ...(other.warnings ?? []),
+        'Printed twice in the source; the two copies were merged. Check the sheet for differences.'])];
+    return r;
+}
+
+/** "(HIGH-LEVEL INITIATE; HUMAN," + "PROFESSIONAL RATING 5)" → one line. */
+function joinSplitParens(text) {
+    const lines = text.split('\n');
+    for (let i = 0; i + 1 < lines.length; i++) {
+        const a = lines[i].trim(), b = lines[i + 1].trim();
+        if (/^\([^)]*$/.test(a) && /^[^(]*\)$/.test(b) && (a + b).length <= 90 && /rating|force|level/i.test(a + b)) {
+            lines[i] = `${a} ${b}`;
+            lines.splice(i + 1, 1);
+        }
+    }
+    return lines.join('\n');
 }
 
 function splitChunks(text) {
@@ -120,17 +188,45 @@ function parseChunk(lines, context, opts, records, skipped) {
 }
 
 /** Standard section headings in adventures (Shadowrun Missions and others): never an NPC's name. */
-const ADVENTURE_HEADING = /^(?:cast of shadows|behind the scenes|pushing the envelope|debugging|scan this|tell it to them straight|legwork|picking up the pieces|player handouts|introduction|mission synopsis|debriefing log|gamemaster reward|reputation|contacts|money|karma|hooks?|plot synopsis|setup|adventure background|scene \d+\b.*|scene:.*|grunts and moving targets|npcs?)$/i;
+const ADVENTURE_HEADING = /^(?:characters(?: (?:&|and) critters)?|& critters|critters|the opposition|nonplayer characters|people|npcs and critters|cast of shadows|behind the scenes|pushing the envelope|debugging|scan this|tell it to them straight|legwork|picking up the pieces|player handouts|introduction|mission synopsis|debriefing log|gamemaster reward|reputation|contacts|money|karma|hooks?|plot synopsis|setup|adventure background|scene \d+\b.*|scene:.*|grunts and moving targets|npcs?)$/i;
 
 const isCaps = t => /[A-Z]{2}/.test(t) && !/[a-z]/.test(t);
+
+/** "FEMALE HUMAN", "Male Elf", "ORK": a metatype line under a name, not a name. */
+export function isMetatypeTag(t) {
+    return /^(?:(?:male|female|androgynous)\s+)?(?:human|elf|dwarf|ork|orc|troll|nartaki|gnome|hobgoblin|satyr|dryad|cyclops|fomori|giant|minotaur|oni|wakyambi|night one|menehune|koborokuru|ogre|nocturna|xapiri thepe)s?(?:\s+(?:male|female))?$/i.test(String(t).trim());
+}
+
+/** The nearest capitalised name line above i, passing over description text. */
+function capsTitleAbove(lines, i, floor, reach = 60) {
+    for (let j = i, seen = 0; j >= floor && seen < reach; j--, seen++) {
+        const t = lines[j].trim();
+        if (!t) continue;
+        if (/[[\]|]/.test(t) || isAttributeHeader(t) || sectionOf(t)) return -1;
+        if (isCaps(t) && isActorTitle(t) && !isMetatypeTag(t)) {
+            let top = j;
+            while (top - 1 >= floor && lines[top - 1].trim() && isCaps(lines[top - 1].trim()) && isActorTitle(lines[top - 1])) top--;
+            return top;
+        }
+    }
+    return -1;
+}
 
 /** A line that can be an NPC name: short, no sentence punctuation, not a stat or label line. */
 function isActorTitle(line) {
     const t = line.trim();
-    if (!t || t.length > 70 || /^[a-z(]/.test(t) || /[.,;:!?]$/.test(t)) return false;
+    if (!t || t.length > 70 || /^[a-z(]/.test(t) || /[.,;:!?-]$/.test(t)) return false;
+    // A stat label on its own ("Notes", "Critter Powers") is not a name.
+    if (sectionOf(`${t}:`)?.rest === '') return false;
+    // Sentences ("…since 2066. Loveland is forty-two") and running headers with a page number.
+    if (/[a-z0-9][.!?]\s+[A-Za-z]/.test(t) && !/^(mr|mrs|ms|dr|st)\./i.test(t)) return false;
+    if (/^[^a-z]*\s\d{1,3}$|^\d{1,3}\s+[^a-z]*$/.test(t) && isCaps(t)) return false;
     // Weapon or gear stats ("Natural weapons (unarmed, Acc 12, DV 7P, AP -1)") are not names.
     if (/\b(?:acc|dv|ap|reach|rc)\s*[-–—+(]?\s*\d/i.test(t)) return false;
     if (ADVENTURE_HEADING.test(t)) return false;
+    // Letter-spaced display text ("B LO OD Y B US IN ESS", a running header) is not a name.
+    const toks = t.split(/\s+/);
+    if (toks.length >= 4 && toks.filter(w => w.length <= 2).length / toks.length >= 0.6) return false;
     if (/[[\]|]/.test(t) || ACTOR_HINT_LINE.test(t) || sectionOf(t) || isAttributeHeader(t) || isVehicleHeader(t)) return false;
     if (parseLabeledLine(t) && !/^name\s*:/i.test(t)) return false;
     return t.replace(/\(.*?\)/g, '').trim().split(/\s+/).length <= 7 && /[A-Za-z]/.test(t);
@@ -145,7 +241,8 @@ function findActorStarts(lines) {
     lines.forEach((line, i) => {
         if (isAttributeHeader(line) || (isVehicleHeader(line) && !parseTableHeader(line)?.columns.includes('avail'))) headers.push(i);
     });
-    const belongsToBlock = l => /[[\]|]/.test(l) || ACTOR_HINT_LINE.test(l) || /[,;]$/.test(l)
+    // Stat lines of the block above (a wrapped description line ending in a comma is not one).
+    const belongsToBlock = l => /[[\]|]/.test(l) || ACTOR_HINT_LINE.test(l) || (/[,;]$/.test(l) && l.split(/\s+/).length < 6)
         || (!!sectionOf(l) && !/^(description|background|notes)\s*:/i.test(l));
     const starts = [];
     headers.forEach((h, n) => {
@@ -160,6 +257,11 @@ function findActorStarts(lines) {
             const t = lines[j].trim();
             if (!t) continue;
             if (/^name\s*:/i.test(t)) { title = j; break; }
+            if (isActorTitle(t) && isMetatypeTag(t)) {
+                // "FEMALE HUMAN" above the table: the name is further up, above the description.
+                const name = capsTitleAbove(lines, j - 1, floor);
+                if (name >= 0) { title = name; break; }
+            }
             if (isActorTitle(t)) {
                 // Take the top of a run of name-like lines ("Halloweener Ganger" above "Ork enforcer").
                 // An all-caps name ("DOCWAGON" / "RESPONSE TEAM") only continues upward in capitals.
@@ -172,9 +274,16 @@ function findActorStarts(lines) {
             if (belongsToBlock(t)) break;
         }
         if (title < 0) {
+            // A long description: the capitalised name further up.
+            const name = capsTitleAbove(lines, h - 1, floor, 150);
+            if (name >= 0) title = name;
+        }
+        if (title < 0) {
             title = h;
             for (let j = floor; j < h; j++) if (lines[j].trim() && !belongsToBlock(lines[j].trim())) { title = j; break; }
         }
+        // "PILAR CARRILLO," above "A.K.A. MOSAIC".
+        if (/^a\.?k\.?a\.?\s/i.test(lines[title]?.trim() ?? '') && title - 1 >= floor && isCaps(lines[title - 1].trim())) title--;
         starts.push(title);
     });
     return starts;
@@ -210,7 +319,8 @@ function actorBlockEnd(lines, start, end) {
         if (/^name\s*:/i.test(t)) return j;
         if (parseTableHeader(t) && !isVehicleHeader(t)) return j;
         const heading = sectionHeading(t);
-        if (heading && heading.documentName === 'Item' && !/^(weapons?|armor|spells?|powers?|gear)$/i.test(t)) return j;
+        // A stat block label on its own line ("Critter Powers" with the powers below) is not a heading.
+        if (heading && heading.documentName === 'Item' && !sectionOf(t) && !/^(weapons?|armor|spells?|powers?|gear)$/i.test(t)) return j;
         if (!t && j + 1 < end && isTitleLike(lines[j + 1]) && looksLikeEntryStart(lines, j + 1)) return j;
     }
     return end;
@@ -473,6 +583,12 @@ function fallback(lines, context, opts, records, skipped = []) {
         // adventures and rulebooks, so it is not reported either; only unreadable table rows are.
         return;
     }
+    // Story text after a heading such as CRITTER POWERS ends that heading's list: it is not a list of
+    // names, and the heading must not carry on into the rest of the book.
+    if (!labeledCount && !opts.forceType && isProse(content)) {
+        context.section = null;
+        return;
+    }
     if (!labeledCount && shortList && listType) {
         // A plain list of names ("Manabolt\nStunbolt\nHeal").
         for (const l of content) records.push(nameOnlyRecord(l, target, context));
@@ -480,6 +596,14 @@ function fallback(lines, context, opts, records, skipped = []) {
     }
     const rec = parseEntry(content, context, opts);
     if (rec) records.push(rec);
+}
+
+/** Sentences rather than a list: long lines, or lines that end like sentences. */
+function isProse(content) {
+    const words = content.map(l => l.split(/\s+/).length);
+    const avg = words.reduce((a, b) => a + b, 0) / content.length;
+    const sentences = content.filter(l => /[.!?”"]$/.test(l) && l.split(/\s+/).length >= 6).length;
+    return avg >= 8 || sentences / content.length >= 0.4;
 }
 
 function nameOnlyRecord(line, target, context) {

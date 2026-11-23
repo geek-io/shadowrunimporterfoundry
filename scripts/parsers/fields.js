@@ -127,7 +127,9 @@ export function parseStatTokens(text) {
         let m;
         if ((m = /^acc(?:uracy)?\s*:?\s*(.+)$/i.exec(p))) out.accuracy = m[1];
         else if ((m = /^(?:dv|dmg|damage)\s*:?\s*(.+)$/i.exec(p))) out.damage = m[1];
-        else if ((m = /^ap\s*:?\s*(.+)$/i.exec(p))) out.ap = m[1];
+        // Books print AP with a sign ("AP –5", "AP +2") or "AP —". A bare number lost its minus in
+        // extraction (some PDFs draw the dash as a line, not text): "AP 5" is AP -5.
+        else if ((m = /^ap\s*:?\s*(.+)$/i.exec(p))) out.ap = /^\d+$/.test(m[1].trim()) && Number(m[1]) > 0 ? `-${m[1].trim()}` : m[1];
         else if ((m = /^rc\s*:?\s*(.+)$/i.exec(p))) out.rc = m[1];
         else if ((m = /^reach\s*:?\s*(.+)$/i.exec(p))) out.reach = m[1];
         else if ((m = /^(?:ammo|ammunition)\s*:?\s*(.+)$/i.exec(p))) out.ammo = m[1];

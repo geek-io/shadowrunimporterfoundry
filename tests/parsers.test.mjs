@@ -526,3 +526,163 @@ test('pdf: running footers next to the last line of a column', async () => {
     assert.equal(lines[61], 'Right column line 0 with ordinary words in it');
     assert.ok(!lines.some(l => /SCENE 3|^13$/.test(l)));
 });
+
+test('pdf: fonts without a character map are decoded', async () => {
+    const { decodePdfText } = await import('../scripts/app/pdf-decode.js');
+    // Glyph numbers = characters shifted by 28; ’ – “ ” are glyphs outside that range.
+    const glyph = { '’': 118, '–': 122, '“': 119, '”': 120 };
+    const enc = s => [...s].map(ch => String.fromCharCode(glyph[ch] ?? ch.charCodeAt(0) - 28)).join('');
+    const prose = 'The runner’s team took the job. They didn’t ask about the pay, and the fixer said “Go now.” to them. ';
+    const items = [
+        ...Array.from({ length: 6 }, () => ({ str: enc(prose), fontName: 'body' })),
+        { str: enc('Weapons Ares Predator V [Heavy Pistol, Acc 5(7), DV 8P, AP –1, SA, RC –, 15(c)]'), fontName: 'body' },
+        { str: enc('SAMPLE GUARD'), fontName: 'heading' },
+        { str: 'Plain text in a normal font.', fontName: 'normal' },
+    ];
+    const res = decodePdfText([items]);
+    assert.equal(res.decoded, true);
+    assert.equal(items[0].str, prose);
+    assert.match(items[6].str, /AP –1, SA/);
+    assert.equal(items[7].str, 'SAMPLE GUARD', 'small heading fonts use the document shift');
+    assert.equal(items[8].str, 'Plain text in a normal font.', 'normal fonts are left alone');
+    // Nothing to decode in an ordinary PDF.
+    const normal = [{ str: 'An ordinary page of text with ordinary words in it.', fontName: 'a' }];
+    assert.equal(decodePdfText([normal]).decoded, false);
+});
+
+test('label-table stat blocks (labels without colons)', () => {
+    const text = `PEOPLE
+SAMPLE ENFORCER
+Sample Enforcer keeps order in the market and settles disputes with his fists,
+his wits, or his very large friends. Nobody remembers him smiling.
+MALE ORK
+B  A  R  S  W  L  I  C  ESS
+6 (+2)  4  4 (6)  5  3  2  3  2  3.2
+Condition   11/10
+Monitor
+Armor  12
+Physical   8(10) + 2(3)D6
+Initiative
+Skills  Clubs 5, Intimidation (6)*, Pistols [8], Unarmed Combat 6 (Boxing w/
+Clinch [Hold] and Jab techniques +2)
+Knowledge   Market Gossip 4,
+Skills  Local Gangs 3
+Gear  Armor jacket [12], earbuds [Rating 2, w/ audio enhancement 3,
+fake SIN [Rating 4], jammer (area,
+Rating 4)
+Weapons  Ares Predator V [Heavy Pistol, Acc 5, DV 8P, AP  1, SA, 15(c))
+Target hit is knocked back a step and loses its footing.
+Notes  He never fights fair.
+* Gamemasters can swap his pistol for a shotgun if they like.
+
+SAMPLE SLUDGE SPIRIT
+(RATING 5)
+B  A  R  S  W  L  I  C  EDG ESS M
+7  4  5  6  5  4  4  4  2  5  5
+Initiative  9 + 2D6
+Skills  Assensing, Perception`;
+    const { records } = parseText(text);
+    assert.deepEqual(records.map(r => [r.type, r.name]), [['character', 'Sample Enforcer'], ['spirit', 'Sample Sludge Spirit']]);
+    const [e, spirit] = records;
+    const a = e.fields.attributes;
+    assert.deepEqual([a.body.base, a.body.augmented, a.reaction.augmented, a.essence.base], [6, 8, 6, 3.2]);
+    assert.equal(e.fields.metatype, 'ork');
+    assert.deepEqual([e.fields.condition.physical, e.fields.condition.stun], [11, 10]);
+    assert.deepEqual(e.fields.initiative.meatspace, { base: 10, dice: 3 });
+    assert.match(e.fields.description, /^Sample Enforcer keeps order/);
+    const sk = Object.fromEntries(e.skills.map(s => [s.name, s]));
+    assert.equal(sk.Intimidation.rating, 6);
+    assert.equal(sk['Unarmed Combat'].rating, 6);
+    assert.equal(sk['Market Gossip'].category, 'knowledge');
+    assert.equal(sk['Local Gangs'].category, 'knowledge');
+    const items = e.children.map(c => c.name);
+    assert.ok(items.includes('Fake SIN') || items.includes('fake SIN'), 'a missing "]" is repaired');
+    assert.ok(items.some(n => /^Jammer/i.test(n)), 'a line inside open brackets carries on the item');
+    const gun = e.children.find(c => c.type === 'weapon');
+    assert.equal(gun.fields.ap, '-1', 'an unsigned AP lost its minus');
+    assert.match(e.fields.notes, /knocked back/);
+    assert.match(e.fields.notes, /never fights fair/);
+    assert.match(e.fields.notes, /swap his pistol/);
+    assert.equal(spirit.fields.force, 5, '(RATING 5) is a spirit\'s Force');
+});
+
+test('adventure names with role lines, per-runner counts and book misprints', () => {
+    const text = `SAMPLE CORPORAL
+AND JANE ROE
+HUMAN UCAS MARINES
+(2, PROFESSIONAL RATING 5)
+B  A  R  S  W  L  I  C  ESS
+5  4  4  4  3  3  4  3  6
+Initiative: 8 + 1D6
+Skills: Pistols 5
+Gear: Heavy armor with helmet [w/ chemseal] Hermes Ikon commlink [Device Rating 3]
+Weapons:
+HK 227 [Submachine Gun, Acc 5(7), DV 7P, AP –1, SA/BF/FA, RC 1, 28(c)]
+
+DAVE, ELVEN
+TOXIC SHAMAN
+(1 PER RUNNER) (PROFESSIONAL RATING 2)
+B  A  R  S  W  L  I  C  ESS ESS
+3  4  4  3  4  4  4  3  2  6
+Initiative: 8 + 1D6
+Skills: Spellcasting 4
+Qualities: Magician
+(Gear: Armor jacket, reagents (15 drams), commlink [Device
+Rating 3]
+Augmentations: [all betaware] Bone density 2, Orthoskin
+Rating 4, Pain editor
+
+Sergeant
+Sam Sample
+Dwarven U.C.A.S. Marine Pilot
+Sam has flown everything with rotors and most things without.
+B  A  R  S  W  L  I  C  ESS
+4  3  5  3  4  5  2  2  6
+Initiative: 7 + 1D6
+
+UCAS MCT-NISSAN
+ROTO-DRONE (2)
+HANDL SPEED ACCEL BODY ARMOR PILOT SENSOR SEATS
+4  4  2  4  4  3  3  0`;
+    const { records } = parseText(text);
+    assert.deepEqual(records.map(r => r.name), ['Sample Corporal and Jane Roe', 'Dave', 'Sergeant Sam Sample', 'UCAS MCT-Nissan Roto-Drone']);
+    const [a, b, c, d] = records;
+    assert.deepEqual([a.fields.role, a.fields.metatype, a.fields.groupSize], ['HUMAN UCAS MARINES', 'human', 2]);
+    assert.deepEqual(a.children.map(x => x.name), ['Heavy armor with helmet', 'Hermes Ikon commlink', 'HK 227']);
+    assert.deepEqual([b.fields.role, b.fields.metatype, b.fields.perRunner, b.fields.professionalRating], ['ELVEN TOXIC SHAMAN', 'elf', '1 per runner', 2]);
+    assert.equal(b.fields.attributes.edge.base, 2, 'the first of two ESS columns is Edge');
+    assert.ok(b.children.some(x => x.name === 'Armor jacket'), '"(Gear:" is read as Gear');
+    const ware = b.children.filter(x => x.type === 'bioware' || x.type === 'cyberware');
+    assert.deepEqual(ware.map(x => [x.name, x.fields.rating, x.fields.grade]), [['Bone density', 2, 'betaware'], ['Orthoskin', 4, 'betaware'], ['Pain editor', undefined, 'betaware']]);
+    assert.deepEqual([c.fields.role, c.fields.metatype], ['Dwarven U.C.A.S. Marine Pilot', 'dwarf']);
+    assert.match(c.fields.description, /^Sam has flown/);
+    assert.deepEqual([d.type, d.fields.groupSize, d.fields.vehicle.vehicleType], ['vehicle', 2, 'air']);
+});
+
+test('an NPC printed twice with typos imports once, merged', () => {
+    const block = (extra, gear) => `SAMPLE PILOT
+DWARF SAMPLE MARINE PILOT
+${extra}
+B  A  R  S  W  L  I  C  EDG ESS
+4  3  5(7)  3  4  5  2  2  2  3.2
+Initiative: 7 + 1D6
+Skills: Gunnery 5, Pilot Aircraft 6${gear}`;
+    const text = `${block('(2 PER RUNNER)', '\nGear: Full body armor, helmet')}
+
+Something happens in between, told over a few lines of story text so the two copies are apart.
+
+${block('A quiet pilot who has flown everywhere and seen most of it from above.', ', Perception 3\nGear: Full body armor and helmet, commlink [Device Rating 4]')}
+
+SAMPLE GUARD
+B  A  R  S  W  L  I  C  ESS
+4  3  5  3  4  5  2  2  6
+Initiative: 7 + 1D6`;
+    const { records } = parseText(text);
+    assert.deepEqual(records.map(r => r.name), ['Sample Pilot', 'Sample Guard']);
+    const [p] = records;
+    assert.match(p.fields.description, /^A quiet pilot/);
+    assert.equal(p.fields.perRunner, '2 per runner');
+    assert.deepEqual(p.skills.map(s => s.name), ['Gunnery', 'Pilot Aircraft', 'Perception']);
+    assert.ok(p.children.some(c => /commlink/i.test(c.name)) && p.children.filter(c => /armor/i.test(c.name)).length === 1);
+    assert.ok(p.warnings.some(w => /merged/.test(w)));
+});

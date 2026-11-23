@@ -3,6 +3,7 @@
  * Rebuilds reading-order lines from positioned text, including two-column rulebook pages.
  */
 import { MODULE_ID, route } from './compat.js';
+import { decodePdfText } from './pdf-decode.js';
 
 let pdfjsLib = null;
 
@@ -51,8 +52,7 @@ export async function extractPdfText(buffer, opts = {}) {
         isEvalSupported: false,
     }).promise;
     const pages = parsePageRange(opts.pages, doc.numPages);
-    const out = [];
-    const emptyPages = [];
+    const read = [];
     try {
         for (let i = 0; i < pages.length; i++) {
             if (opts.token?.cancelled) break;
@@ -61,16 +61,32 @@ export async function extractPdfText(buffer, opts = {}) {
             const page = await doc.getPage(pageNo);
             const viewport = page.getViewport({ scale: 1 });
             const content = await page.getTextContent({ disableNormalization: false });
-            const text = pageToText(content.items, viewport.width, opts.columns ?? 'auto', viewport.height);
-            if (!text.trim()) emptyPages.push(pageNo);
-            out.push(text);
+            read.push({ pageNo, items: content.items, width: viewport.width, height: viewport.height });
             page.cleanup();
         }
     } finally {
         await doc.destroy();
     }
     opts.onProgress?.({ page: 0, done: pages.length, total: pages.length });
-    return { text: out.join('\n\n'), pageCount: doc.numPages, pages, emptyPages };
+    const { text, emptyPages, decoded } = pagesToText(read, opts.columns ?? 'auto');
+    return { text, pageCount: doc.numPages, pages, emptyPages, decoded };
+}
+
+/**
+ * Text of several pages read with pdf.js: fonts without a character map are decoded across the
+ * whole selection first (see pdf-decode.js), then each page is laid out.
+ * @param {{pageNo:number, items:object[], width:number, height:number}[]} read
+ */
+export function pagesToText(read, columns = 'auto') {
+    const { decoded } = decodePdfText(read.map(p => p.items));
+    const out = [];
+    const emptyPages = [];
+    for (const p of read) {
+        const text = pageToText(p.items, p.width, columns, p.height);
+        if (!text.trim()) emptyPages.push(p.pageNo);
+        out.push(text);
+    }
+    return { text: out.join('\n\n'), emptyPages, decoded };
 }
 
 /* ------------------------------------------------------------------ */
@@ -179,9 +195,15 @@ function findGutters(runs, pageWidth) {
             const ok = lines.length >= 3 && ((proseLike(lines) && span(rs) >= vSpan * 0.3)
                 || (isEdge(i, gutters) && navLike(lines) && extent(rs) >= vExtent * 0.4));
             if (ok) continue;
-            // Merge this strip with a neighbour by dropping one of its gutters (the narrower).
+            // Merge this strip with a neighbour by dropping one of its gutters: the one between cells
+            // of the same table rows (a label/value split lines up row by row), else the narrower.
             const cands = [i - 1, i].filter(k => k >= 0 && k < gutters.length);
-            const k = cands.sort((a, b) => (gutters[a].end - gutters[a].start) - (gutters[b].end - gutters[b].start))[0];
+            // A gutter with ordinary text on one side is a column edge; one between short cells on
+            // both sides is a table split and goes first.
+            const cellsBothSides = k => [k, k + 1].every(n => !proseLike(groupLines(stripRuns(gutters, n)))) ? 1 : 0;
+            const aligned = k => rowAligned(groupLines(stripRuns(gutters, k)), groupLines(stripRuns(gutters, k + 1)));
+            const width = k => gutters[k].end - gutters[k].start;
+            const k = cands.sort((a, b) => (cellsBothSides(b) - cellsBothSides(a)) || (aligned(b) - aligned(a)) || (width(a) - width(b)))[0];
             gutters.splice(k, 1);
             changed = true;
             break;
@@ -192,8 +214,9 @@ function findGutters(runs, pageWidth) {
     gutters = gutters.filter((g, i) => {
         const l = groupLines(stripRuns(gutters, i)), r = groupLines(stripRuns(gutters, i + 1));
         if ((i === 0 && navLike(l)) || (i === gutters.length - 1 && navLike(r))) return true;
-        const short = [l, r].some(ls => !proseLike(ls));
-        return !short || rowAligned(l, r) < 0.6;
+        // Both sides short cells (a table), lined up row by row: one table, not two columns.
+        const cells = [l, r].every(ls => !proseLike(ls));
+        return !cells || rowAligned(l, r) < 0.6;
     });
     return gutters;
 }
@@ -350,4 +373,4 @@ function linesToText(lines) {
 }
 
 /** Exposed for tests. */
-export const _internal = { pageToText, findGutters, layoutText, groupLines, linesToText };
+export const _internal = { pagesToText, pageToText, findGutters, layoutText, groupLines, linesToText };

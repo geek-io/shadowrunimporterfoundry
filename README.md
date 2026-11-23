@@ -8,6 +8,33 @@ A Foundry VTT v13 and v14 module for the [Shadowrun 5th Edition system](https://
 
 <a href="https://patreon.com/geekioshow"><img src="assets/Patreon-Logo.png" alt="All my work is always free, but a little bit of help is always appreciated" width="240"></a>
 
+# v 0.1.9
+
+Tested end to end on the Shadowrun Missions adventure Dirty Laundry: every NPC, critter, spirit, drone, host and contact comes through.
+
+- **Names over several lines with a role line under them.** `PRIVATES ERIN MENKAS` / `AND PHILIP ROE` / `HUMAN UCAS MARINES` gives the name "Privates Erin Menkas and Philip Roe". The role line sets the metatype and goes into the biography. This also works for names with periods or nicknames (`LT. FRANCOIS` / `“STEREOTYPE” ABELLARD`), for `MELEK, ELVEN` / `TOXIC SHAMAN`, and for names printed in normal case (`Warrant Officer` / `Chris Jenkins` / `Dwarven U.C.A.S. Marine Pilot`).
+- **NPCs printed twice are merged.** Adventures often print an NPC in a scene and again in the cast pages at the back, with small typos between the copies. When the name, type and attributes match, the importer now makes one entry: it keeps the fuller copy and adds anything only the other copy has (an item, a skill, a longer description). The entry is marked "Printed twice in the source" so you can check the sheet. Scenes that use different numbers keep both ("Appears: 2 per runner or 1 per runner").
+- **"Per runner" counts:** `(2 PER RUNNER, PROFESSIONAL RATING 1)`, `(1 PER RUNNER) (PROFESSIONAL RATING 1)` and `(12 + 3 PER RUNNER)` are read, and the count goes into the biography ("Appears: 2 per runner").
+- **Drone names with a count:** `UCAS MCT-NISSAN` / `ROTO-DRONE (2)` becomes "UCAS MCT-Nissan Roto-Drone", a group of 2, and an aircraft. Abbreviations such as UCAS, MCT, GMC and HK keep their capitals.
+- **Model numbers stay in weapon names:** "HK 227", "Fichetti Security 600" and "Ultimax 70" are no longer cut to "HK" with a rating of 227.
+- **Augmentation lists** that start with a grade for all of them (`[all betaware] Bone Density 4, Orthoskin Rating 4, Pain Editor`) give every item that grade. A wrapped line that starts with "Rating 4," no longer ends the list early.
+- **Book misprints handled:** a gear list with a missing comma between two items (`…helmet [w/ chemseal] Hermes Ikon commlink`), a `(Gear:` line whose parenthesis is never closed, and an attribute table headed `ESS ESS` where the first is Edge.
+
+# v 0.1.8
+
+Tested end to end on Bloody Business (162 pages): all 67 NPCs, spirits, critters and vehicles come through with their names, stats, skills and gear.
+
+- **PDFs with scrambled text are decoded.** Some PDFs use fonts with no character table, so their text comes out as nonsense ("8LI" for "The"). The importer now detects this and decodes it, including apostrophes, quotes and dashes. Letters it cannot work out, mostly accented ones such as the á in Bogotá, show as �. A note in the importer says when a PDF was decoded.
+- **Characters that used to vanish from such PDFs** (`( ) % & '`) are kept. The bundled pdf.js has a small patch for this.
+- **Label-table stat blocks** (a label column and a value column, no colons) import, including labels wrapped over two lines ("Condition / Monitor", "Physical / Initiative", "Knowledge / Skills"), Notes, Bound Spirits, Registered Sprites, Cyberdeck and labels the importer does not know (kept in the notes).
+- **More column layouts:** a short description column next to a stat table, and pages with a large chapter title across the top, are read in the right order.
+- **Names:** the importer looks further up for a name above a long description, and passes over metatype lines ("FEMALE HUMAN"), running headers, letter-spaced titles and section labels. `PILAR CARRILLO,` over `A.K.A. MOSAIC` becomes "Pilar Carrillo (a.k.a. Mosaic)". A group line such as `(LAW ENFORCEMENT; DWARF, PROFESSIONAL RATING 4)` sets the metatype and rating, and a spirit's `(RATING 7)` is its Force.
+- **Values:** attributes written `5 (7)` or `4 (+2)`, initiative written `9 (12) + 1(4)D6` or `8 (9) + D6`, and Essence misprinted under M or EDG.
+- **Skills:** specializations with brackets inside ("Tae Kwon Do w/ … [Block] …"), dice pools such as `Pistols [8]`, `Intimidation (6)*`, `group7` and "Sneak".
+- **Gear and weapons:** brackets the book closes with the wrong mark or never closes are repaired, an item wrapped over two lines inside brackets stays whole, sentences in a Weapons list go to the notes, and `*` footnotes go to the notes. An AP printed without its minus sign ("AP 5", where the PDF dropped the dash) is read as negative.
+- A heading such as CRITTER POWERS no longer carries on into the story text after it.
+- Story-text lines starting with a lowercase word ("knowledge to formulate…") are no longer read as stat labels.
+
 # v 0.1.7
 
 Tested end to end on a full Shadowrun Missions adventure PDF: every NPC, spirit, vehicle, host and contact now comes through.

@@ -4,7 +4,7 @@
  * Returns the creation data plus a "plan" of work that needs the created actor
  * (skills, owned items, and reconciling derived values with the printed stat block).
  */
-import { escapeHTML, textToHTML, toNumber } from '../parsers/common.js';
+import { escapeHTML, textToHTML, toNumber, tidyName } from '../parsers/common.js';
 
 const CORE = ['body', 'agility', 'reaction', 'strength', 'willpower', 'logic', 'intuition', 'charisma', 'edge', 'magic', 'resonance'];
 const MATRIX = ['attack', 'sleaze', 'data_processing', 'firewall'];
@@ -34,6 +34,8 @@ export function buildActor(record, opts = {}) {
     const facts = [];
     if (f.professionalRating !== undefined) facts.push(`Professional Rating ${f.professionalRating}`);
     if (f.groupSize > 1) facts.push(`Group of ${f.groupSize}`);
+    if (f.perRunner) facts.push(`Appears: ${escapeHTML(f.perRunner)}`);
+    if (f.role) facts.push(escapeHTML(tidyRole(f.role)));
     if (f.tradition) facts.push(`Tradition: ${escapeHTML(f.tradition)}`);
     if (f.metavariant) facts.push(`Metavariant: ${escapeHTML(f.metavariant)}`);
     if (f.movement) facts.push(`Movement: ${escapeHTML(f.movement)}`);
@@ -181,4 +183,10 @@ function buildIC(system, f, plan, warnings) {
     if (f.hostRating !== undefined) system.host = { rating: toNumber(f.hostRating) };
     initiative(system, f, plan, { matrix: true });
     void warnings;
+}
+
+/** "LAW ENFORCEMENT" → "Law Enforcement" (as printed when not all capitals). */
+function tidyRole(s) {
+    const t = String(s).trim();
+    return /[a-z]/.test(t) ? t : tidyName(t);
 }

@@ -32241,7 +32241,9 @@ class PartialEvaluator {
           glyphWidth = glyph.vmetric ? glyph.vmetric[0] : -glyphWidth;
         }
         let scaledDim = glyphWidth * scale;
-        if (!keepWhiteSpace && category.isWhitespace) {
+        if (!keepWhiteSpace && category.isWhitespace && !/^[\t\n\v\f\r]$/.test(glyph.unicode)) {
+          // sr5-importer patch: glyphs that map to control characters (fonts without a ToUnicode
+          // table, where the text has to be decoded later) are kept instead of turned into spaces.
           if (!font.vertical) {
             charSpacing += scaledDim + textState.wordSpacing;
             textState.translateTextMatrix(charSpacing * textState.textHScale, 0);
